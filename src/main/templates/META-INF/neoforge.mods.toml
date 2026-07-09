@@ -1,0 +1,32 @@
+license="${mod_license}"
+issueTrackerURL="https://github.com/lans/RoutineBags/issues"
+displayURL="https://github.com/lans/RoutineBags"
+
+[[mods]]
+modId="${mod_id}"
+version="${mod_version}"
+displayName="${mod_name}"
+authors="LANS"
+# 客户端可独立运行；服务端安装时启用增强能力，版本检查仍保持宽松
+displayTest="IGNORE_ALL_VERSION"
+description='''
+Unified storage view for bundles and shulker boxes.
+Open one virtual backpack, search everything, pick up or store items across
+multiple bags, and sort bundle contents with vanilla-safe inventory clicks.
+Servers may optionally install RoutineBags or a compatible RoutineBagkkit plugin
+to enable server-assisted operations.
+'''
+
+[[dependencies.${mod_id}]]
+    modId="neoforge"
+    type="required"
+    versionRange="[${neo_version},)"
+    ordering="NONE"
+    side="BOTH"
+
+[[dependencies.${mod_id}]]
+    modId="minecraft"
+    type="required"
+    versionRange="${minecraft_version_range}"
+    ordering="NONE"
+    side="BOTH"

@@ -1,0 +1,6 @@
+name: RoutineBagkkit
+version: ${version}
+main: dev.lans.routinebagkkit.RoutineBagkkitPlugin
+api-version: '1.21'
+author: LANS
+description: Server-side RoutineBags companion plugin for Paper servers.
