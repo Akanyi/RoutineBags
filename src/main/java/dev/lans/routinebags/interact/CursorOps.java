@@ -8,6 +8,7 @@ import dev.lans.routinebags.bag.BagView;
 import dev.lans.routinebags.merge.ItemKey;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.inventory.InventoryMenu;
 import net.minecraft.world.item.ItemStack;
@@ -219,13 +220,62 @@ public final class CursorOps {
         r.enqueue(storeAllStep(r, MAX_ROUNDS));
     }
 
+    /** 从指定玩家背包槽拿起整堆，然后复用光标跨袋存入逻辑。 */
+    public static void storeInventoryStack(StepRunner r, int menuSlot, ItemKey expected) {
+        r.enqueue(() -> {
+            if (!InvOps.carried().isEmpty()) {
+                return false;
+            }
+            ItemStack live = InvOps.stackAt(menuSlot);
+            return !live.isEmpty() && expected.matches(live) && InvOps.leftClick(menuSlot);
+        });
+        r.enqueue(Moves.waitUntil(r, () -> expected.matches(InvOps.carried()), MAX_ROUNDS));
+        r.enqueue(storeInventoryRemainderStep(r, menuSlot, expected, MAX_ROUNDS));
+    }
+
+    private static StepRunner.Step storeInventoryRemainderStep(StepRunner r, int originSlot, ItemKey expected, int rounds) {
+        return () -> {
+            ItemStack carried = InvOps.carried();
+            if (carried.isEmpty()) {
+                return true;
+            }
+            if (!expected.matches(carried) || rounds <= 0) {
+                return putRemainderBack(r, originSlot);
+            }
+            BagView best = bestFitBag(carried);
+            if (best == null) {
+                return putRemainderBack(r, originSlot);
+            }
+            int before = carried.getCount();
+            if (!InvOps.leftClick(best.menuSlot)) {
+                return false;
+            }
+            if (!InvOps.carried().isEmpty()) {
+                r.enqueueFirst(Moves.waitUntilThen(r, () -> InvOps.carried().isEmpty() || InvOps.carried().getCount() < before,
+                        MAX_ROUNDS, storeInventoryRemainderStep(r, originSlot, expected, rounds - 1)));
+            }
+            return true;
+        };
+    }
+
+    private static boolean putRemainderBack(StepRunner r, int originSlot) {
+        if (InvOps.carried().isEmpty()) {
+            return true;
+        }
+        if (InvOps.stackAt(originSlot).isEmpty()) {
+            return InvOps.leftClick(originSlot) && InvOps.carried().isEmpty();
+        }
+        r.abort(Component.translatable("gui.routinebags.status.partial_insert"));
+        return true;
+    }
+
     private static StepRunner.Step storeAllStep(StepRunner r, int rounds) {
         return () -> {
             ItemStack carried = InvOps.carried();
             if (carried.isEmpty()) {
                 return true;
             }
-            if (!BundleContents.canItemBeInBundle(carried) || rounds <= 0) {
+            if (!canAutoStoreFromCursor(carried) || rounds <= 0) {
                 r.abort(Component.translatable("gui.routinebags.status.partial_insert"));
                 return true;
             }
@@ -234,11 +284,13 @@ public final class CursorOps {
                 r.abort(Component.translatable("gui.routinebags.status.partial_insert"));
                 return true;
             }
+            int before = carried.getCount();
             if (!InvOps.leftClick(best.menuSlot)) {
                 return false;
             }
             if (!InvOps.carried().isEmpty()) {
-                r.enqueueFirst(storeAllStep(r, rounds - 1));
+                r.enqueueFirst(Moves.waitUntilThen(r, () -> InvOps.carried().isEmpty() || InvOps.carried().getCount() < before,
+                        MAX_ROUNDS, storeAllStep(r, rounds - 1)));
             }
             return true;
         };
@@ -254,7 +306,7 @@ public final class CursorOps {
         int[] bagSlot = {-1};
         r.enqueue(() -> {
             ItemStack carried = InvOps.carried();
-            if (carried.isEmpty() || !BundleContents.canItemBeInBundle(carried)) {
+            if (carried.isEmpty() || !canAutoStoreFromCursor(carried)) {
                 return false;
             }
             BagView best = bestFitBag(carried);
@@ -382,7 +434,7 @@ public final class CursorOps {
             return -1;
         }
         for (int i = 0; i < bc.size(); i++) {
-            if (ItemStack.isSameItemSameComponents(key.proto(), bc.items().get(i))) {
+            if (ItemStack.isSameItemSameComponents(key.proto(), bc.items().get(i).create())) {
                 return i;
             }
         }
@@ -397,6 +449,10 @@ public final class CursorOps {
             }
         }
         return -1;
+    }
+
+    private static boolean canAutoStoreFromCursor(ItemStack stack) {
+        return BundleContents.canItemBeInBundle(stack) && stack.get(DataComponents.BUNDLE_CONTENTS) == null;
     }
 
     private CursorOps() {}

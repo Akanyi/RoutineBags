@@ -1,0 +1,66 @@
+plugins {
+    id 'net.fabricmc.fabric-loom' version "${loom_version}"
+}
+
+version = mod_version
+group = mod_group_id
+
+base {
+    archivesName = "${mod_id}-fabric"
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${minecraft_version}"
+    implementation "net.fabricmc:fabric-loader:${loader_version}"
+    implementation "net.fabricmc.fabric-api:fabric-api:${fabric_api_version}"
+}
+
+def sharedJavaRoot = file('../src/main/java').canonicalFile.toPath()
+def platformSources = [
+        'dev/lans/routinebags/ClientConfig.java',
+        'dev/lans/routinebags/RoutineBags.java',
+        'dev/lans/routinebags/RoutineBagsClient.java',
+        'dev/lans/routinebags/client/ClientTickHandler.java',
+        'dev/lans/routinebags/client/ContainerMounts.java',
+        'dev/lans/routinebags/client/Keybinds.java',
+        'dev/lans/routinebags/client/ServerBridge.java',
+        'dev/lans/routinebags/network/RoutineBagsNetwork.java',
+        'dev/lans/routinebags/network/ServerConnectionEvents.java'
+] as Set
+
+sourceSets {
+    main {
+        java {
+            srcDir '../src/main/java'
+            exclude { details ->
+                def path = details.file.toPath().toAbsolutePath().normalize()
+                if (!path.startsWith(sharedJavaRoot)) {
+                    return false
+                }
+                def relative = sharedJavaRoot.relativize(path).toString().replace('\\', '/')
+                return platformSources.contains(relative) || relative.startsWith('dev/lans/routinebags/server/')
+            }
+        }
+        resources {
+            srcDir '../src/main/resources'
+        }
+    }
+}
+
+processResources {
+    inputs.property 'version', project.version
+    filesMatching('fabric.mod.json') {
+        expand 'version': project.version
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    options.release = 25
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_25
+    targetCompatibility = JavaVersion.VERSION_25
+    withSourcesJar()
+}

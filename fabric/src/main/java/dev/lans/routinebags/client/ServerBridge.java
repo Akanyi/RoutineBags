@@ -5,10 +5,10 @@ import dev.lans.routinebags.network.RoutineBagsNetwork;
 import dev.lans.routinebags.network.RoutineBagsNetwork.HelloPayload;
 import dev.lans.routinebags.network.RoutineBagsNetwork.SortResultPayload;
 import dev.lans.routinebags.network.RoutineBagsNetwork.StoreResultPayload;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.network.chat.Component;
-import net.neoforged.neoforge.network.registration.NetworkRegistry;
 
 public final class ServerBridge {
     private static boolean available;
@@ -30,7 +30,7 @@ public final class ServerBridge {
             serverStore = false;
         }
         boolean channelAvailable = listener != null
-                && NetworkRegistry.hasChannel(listener, RoutineBagsNetwork.SORT_REQUEST_ID);
+                && ClientPlayNetworking.canSend(RoutineBagsNetwork.SortRequestPayload.TYPE);
         if (!channelAvailable) {
             available = false;
             provider = "client";
@@ -52,16 +52,14 @@ public final class ServerBridge {
 
     public static boolean canStoreOnServer() {
         refresh();
-        return available && serverStore;
+        return available && serverStore && Minecraft.getInstance().getConnection() != null
+                && ClientPlayNetworking.canSend(RoutineBagsNetwork.StoreRequestPayload.TYPE);
     }
 
     public static void requestSort(SortMode mode) {
         lastSortResult = null;
         if (canSortOnServer()) {
-            ClientPacketListener listener = Minecraft.getInstance().getConnection();
-            if (listener != null) {
-                listener.send(new RoutineBagsNetwork.SortRequestPayload(mode.ordinal()));
-            }
+            ClientPlayNetworking.send(new RoutineBagsNetwork.SortRequestPayload(mode.ordinal()));
         }
     }
 
@@ -70,11 +68,7 @@ public final class ServerBridge {
         if (!canStoreOnServer()) {
             return false;
         }
-        ClientPacketListener listener = Minecraft.getInstance().getConnection();
-        if (listener == null) {
-            return false;
-        }
-        listener.send(new RoutineBagsNetwork.StoreRequestPayload(menuSlot));
+        ClientPlayNetworking.send(new RoutineBagsNetwork.StoreRequestPayload(menuSlot));
         return true;
     }
 

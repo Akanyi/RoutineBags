@@ -1,0 +1,12 @@
+{
+  "required": true,
+  "package": "dev.lans.routinebags.mixin.client",
+  "compatibilityLevel": "JAVA_25",
+  "client": [
+    "AbstractContainerScreenAccessor",
+    "AbstractContainerScreenMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

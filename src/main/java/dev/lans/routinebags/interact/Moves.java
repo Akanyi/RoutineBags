@@ -158,7 +158,7 @@ public final class Moves {
         if (bc == null || entryIdx < 0 || entryIdx >= bc.size()) {
             return false;
         }
-        return ItemStack.isSameItemSameComponents(key.proto(), bc.items().get(entryIdx));
+        return ItemStack.isSameItemSameComponents(key.proto(), bc.items().get(entryIdx).create());
     }
 
     static StepRunner.Step waitUntil(StepRunner r, java.util.function.BooleanSupplier condition, int ticksLeft) {

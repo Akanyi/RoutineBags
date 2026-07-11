@@ -2,7 +2,6 @@ package dev.lans.routinebags.client;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 
 import com.mojang.blaze3d.platform.InputConstants;
 
@@ -19,9 +18,9 @@ import dev.lans.routinebags.merge.AggregatedIndex.Entry;
 import dev.lans.routinebags.merge.ItemKey;
 import dev.lans.routinebags.sort.SortController;
 import net.minecraft.ChatFormatting;
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.Renderable;
 import net.minecraft.client.gui.components.events.GuiEventListener;
 import net.minecraft.client.gui.narration.NarratableEntry;
@@ -47,10 +46,13 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
     private static final int GRID_W = GRID_COLS * CELL;
     private static final int BTN_H = 14;
     private static final int W = PAD + GRID_W + PAD;
+    private static final int PANEL_GAP = 4;
     private static final int TAB_W = 24;
     private static final int TAB_H = 18;
     private static final int MIN_GRID_ROWS = 3;
     private static final int MAX_GRID_ROWS = 8;
+    private static final int HEADER_H = 18;
+    private static final int SECTION_HEADER_H = 11;
 
     private static final int COL_PANEL = 0xF0060D16;
     private static final int COL_PANEL_INNER = 0xE90B1522;
@@ -82,7 +84,6 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
 
     private List<BagView> bags = List.of();
     private List<Entry> entries = List.of();
-    private String query = "";
     private int scrollRow;
     private int bagFilter = -1;
     private SortMode sortMode = ClientConfig.SORT_MODE.get();
@@ -91,6 +92,8 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
     private boolean waitingServerSort;
     private boolean focused;
     private boolean open = openState;
+    private boolean mouseCaptured;
+    private boolean suppressed;
 
     private int x;
     private int y;
@@ -103,42 +106,26 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
     private Rect cancelBtn = new Rect(0, 0, 0, 0);
     private Rect modeBtn = new Rect(0, 0, 0, 0);
     private Rect openBtn = new Rect(0, 0, 0, 0);
-    private Rect searchClearBtn = new Rect(0, 0, 0, 0);
-    private EditBox searchBox;
+    private Rect closeBtn = new Rect(0, 0, 0, 0);
 
     public MountedBagPanel(AbstractContainerMenu mountedMenu) {
         this.mountedMenu = mountedMenu;
-        this.searchBox = new EditBox(this.minecraft.font, 0, 0, 10, 12, Component.translatable("gui.routinebags.search_hint"));
-        this.searchBox.setHint(Component.translatable("gui.routinebags.search_hint").withStyle(ChatFormatting.DARK_GRAY));
-        this.searchBox.setMaxLength(60);
-        this.searchBox.setResponder(s -> {
-            this.query = s.toLowerCase(Locale.ROOT).trim();
-            this.scrollRow = 0;
-            refresh();
-        });
     }
 
     public void layout(int screenW, int screenH, int containerLeft, int containerTop, int containerW, int containerH) {
-        this.gridRows = Math.clamp((screenH - 88) / CELL, MIN_GRID_ROWS, MAX_GRID_ROWS);
+        int gridTop = PAD + HEADER_H + SECTION_HEADER_H;
+        int fixedH = gridTop + 4 + BTN_H + 3 + 11 + 4 + 9 + PAD;
+        this.gridRows = Math.clamp((screenH - fixedH - 8) / CELL, MIN_GRID_ROWS, MAX_GRID_ROWS);
         this.gridH = this.gridRows * CELL;
-        this.h = PAD + 16 + 16 + this.gridH + 4 + BTN_H + 16 + PAD;
-        int rightX = containerLeft + containerW + 8;
-        int leftX = containerLeft - W - 8;
-        if (rightX + W <= screenW - 4) {
-            this.x = rightX;
-        } else if (leftX >= 4) {
-            this.x = leftX;
-        } else {
-            this.x = Math.max(4, screenW - W - 4);
-        }
+        this.h = fixedH + this.gridH;
+        int leftX = containerLeft - W - PANEL_GAP;
+        int rightX = containerLeft + containerW + PANEL_GAP;
+        this.x = leftX >= 4 ? leftX : Math.min(rightX, Math.max(4, screenW - W - 4));
         this.y = Mth.clamp(containerTop, 4, Math.max(4, screenH - this.h - 4));
-        this.tabRect = new Rect(tabX(screenW, containerLeft, containerW), Mth.clamp(this.y + 8, 4, Math.max(4, screenH - TAB_H - 4)), TAB_W, TAB_H);
+        this.tabRect = new Rect(tabX(screenW, containerLeft), Mth.clamp(this.y + 8, 4, Math.max(4, screenH - TAB_H - 4)), TAB_W, TAB_H);
+        this.closeBtn = new Rect(this.x + W - PAD - 12, this.y + 3, 12, 12);
         int innerX = this.x + PAD;
-        this.searchBox.setX(innerX);
-        this.searchBox.setY(this.y + PAD + 16);
-        this.searchBox.setSize(GRID_W - 14, 12);
-        this.searchClearBtn = new Rect(innerX + GRID_W - 12, this.y + PAD + 16, 12, 12);
-        this.gridRect = new Rect(innerX, this.y + PAD + 32, GRID_W, this.gridH);
+        this.gridRect = new Rect(innerX, this.y + gridTop, GRID_W, this.gridH);
         int btnY = this.gridRect.y + this.gridH + 4;
         this.sortBtn = new Rect(innerX, btnY, 34, BTN_H);
         this.cancelBtn = new Rect(innerX + 38, btnY, 34, BTN_H);
@@ -147,16 +134,17 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
         refresh();
     }
 
-    private int tabX(int screenW, int containerLeft, int containerW) {
-        int rightX = containerLeft + containerW + 2;
-        int leftX = containerLeft - TAB_W - 2;
-        if (rightX + TAB_W <= screenW - 4) {
-            return rightX;
-        }
-        if (leftX >= 4) {
-            return leftX;
-        }
-        return Math.max(4, screenW - TAB_W - 4);
+    private int tabX(int screenW, int containerLeft) {
+        int x = containerLeft - TAB_W - 2;
+        return Mth.clamp(x, 4, Math.max(4, screenW - TAB_W - 4));
+    }
+
+    public static int panelWidth() {
+        return W;
+    }
+
+    public static int panelGap() {
+        return PANEL_GAP;
     }
 
     public void tick() {
@@ -208,9 +196,6 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
         this.entries = AggregatedIndex.build(this.bags, this.sortMode);
         this.visible.clear();
         for (Entry e : this.entries) {
-            if (!e.matchesQuery(this.query)) {
-                continue;
-            }
             if (this.bagFilter >= 0 && e.sources.stream().noneMatch(s -> s.bagOrdinal() == this.bagFilter)) {
                 continue;
             }
@@ -222,7 +207,12 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float partialTick) {
-        drawTab(g, mouseX, mouseY);
+        if (this.suppressed) {
+            return;
+        }
+        if (!this.open) {
+            drawTab(g, mouseX, mouseY);
+        }
         if (!this.open || this.h <= 0) {
             return;
         }
@@ -231,9 +221,8 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
         g.outline(this.x, this.y, W, this.h, COL_BORDER_BRIGHT);
         g.outline(this.x + 2, this.y + 2, W - 4, this.h - 4, COL_BORDER);
         g.text(this.minecraft.font, Component.translatable("gui.routinebags.mount.title"), this.x + PAD, this.y + 5, COL_TEXT_AE);
+        drawCloseButton(g, mouseX, mouseY);
 
-        this.searchBox.extractRenderState(g, mouseX, mouseY, partialTick);
-        drawSearchClear(g, mouseX, mouseY);
         drawGrid(g, mouseX, mouseY);
         drawButtons(g, mouseX, mouseY);
         drawStatus(g);
@@ -261,21 +250,19 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
         return (this.runner.busy() || this.sorter.isActive() || this.waitingServerSort) ? "!" : "";
     }
 
-    private void drawSearchClear(GuiGraphicsExtractor g, int mouseX, int mouseY) {
-        if (this.query.isEmpty()) {
-            return;
-        }
-        boolean hover = this.searchClearBtn.contains(mouseX, mouseY);
-        g.fill(this.searchClearBtn.x, this.searchClearBtn.y, this.searchClearBtn.x + this.searchClearBtn.w,
-                this.searchClearBtn.y + this.searchClearBtn.h, hover ? COL_BTN_HOVER : COL_BTN);
-        g.centeredText(this.minecraft.font, Component.literal("x"), this.searchClearBtn.x + 6, this.searchClearBtn.y + 2, 0xFFE0E0E0);
+    private void drawCloseButton(GuiGraphicsExtractor g, int mouseX, int mouseY) {
+        boolean hover = this.closeBtn.contains(mouseX, mouseY);
+        g.fill(this.closeBtn.x, this.closeBtn.y, this.closeBtn.x + this.closeBtn.w, this.closeBtn.y + this.closeBtn.h,
+                hover ? COL_BTN_HOVER : COL_BTN);
+        g.outline(this.closeBtn.x, this.closeBtn.y, this.closeBtn.w, this.closeBtn.h, hover ? COL_BORDER_BRIGHT : COL_BORDER);
+        g.centeredText(this.minecraft.font, Component.literal("x"), this.closeBtn.x + this.closeBtn.w / 2, this.closeBtn.y + 2, COL_TEXT_AE);
         if (hover) {
-            g.setComponentTooltipForNextFrame(this.minecraft.font, List.of(Component.translatable("gui.routinebags.clear_search")), mouseX, mouseY);
+            g.setComponentTooltipForNextFrame(this.minecraft.font, List.of(Component.translatable("gui.routinebags.mount.tooltip_collapse")), mouseX, mouseY);
         }
     }
 
     private void drawGrid(GuiGraphicsExtractor g, int mouseX, int mouseY) {
-        drawSection(g, this.gridRect.x - 3, this.gridRect.y - 11, GRID_W + 6, this.gridH + 14,
+        drawSection(g, this.gridRect.x - 3, this.gridRect.y - SECTION_HEADER_H, GRID_W + 6, this.gridH + SECTION_HEADER_H + 3,
                 Component.translatable("gui.routinebags.section.grid"));
         for (int row = 0; row < this.gridRows; row++) {
             for (int col = 0; col < GRID_COLS; col++) {
@@ -293,10 +280,8 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
             return;
         }
         if (this.visible.isEmpty()) {
-            Component empty = this.query.isEmpty()
-                    ? Component.translatable("gui.routinebags.no_items")
-                    : Component.translatable("gui.routinebags.no_search_results", this.query);
-            g.centeredText(this.minecraft.font, empty, this.gridRect.x + GRID_W / 2, this.gridRect.y + this.gridH / 2 - 4, COL_TEXT_DIM);
+            g.centeredText(this.minecraft.font, Component.translatable("gui.routinebags.no_items"),
+                    this.gridRect.x + GRID_W / 2, this.gridRect.y + this.gridH / 2 - 4, COL_TEXT_DIM);
         }
         Entry hovered = null;
         for (int i = 0; i < this.gridRows * GRID_COLS; i++) {
@@ -327,7 +312,8 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
             g.fill(trackX, thumbY, trackX + 3, thumbY + thumbH, COL_BORDER);
         }
         if (hovered != null) {
-            g.setComponentTooltipForNextFrame(this.minecraft.font, entryTooltip(hovered), mouseX, mouseY, hovered.display);
+            g.setTooltipForNextFrame(this.minecraft.font, entryTooltip(hovered), hovered.display.getTooltipImage(),
+                    mouseX, mouseY, hovered.display.get(DataComponents.TOOLTIP_STYLE));
         }
     }
 
@@ -421,9 +407,13 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
 
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+        if (this.suppressed) {
+            return false;
+        }
         double mx = event.x();
         double my = event.y();
-        if (this.tabRect.contains(mx, my)) {
+        if (!this.open && this.tabRect.contains(mx, my)) {
+            this.mouseCaptured = true;
             toggleOpen();
             return true;
         }
@@ -431,28 +421,17 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
             return false;
         }
         if (!isMouseOver(mx, my)) {
-            this.searchBox.setFocused(false);
             return false;
         }
+        this.mouseCaptured = true;
         this.focused = true;
         boolean rightClick = event.button() == GLFW.GLFW_MOUSE_BUTTON_RIGHT;
-        if (this.searchClearBtn.contains(mx, my) && !this.query.isEmpty()) {
-            clearSearch();
+        if (this.closeBtn.contains(mx, my)) {
+            toggleOpen();
             return true;
         }
-        if (this.searchBox.isMouseOver(mx, my) && rightClick && !this.query.isEmpty()) {
-            clearSearch();
-            return true;
-        }
-        if (this.searchBox.mouseClicked(event, doubleClick)) {
-            return true;
-        }
-        this.searchBox.setFocused(false);
         if (this.openBtn.contains(mx, my)) {
-            if (this.minecraft.screen != null) {
-                this.minecraft.screen.onClose();
-            }
-            this.minecraft.setScreen(new UnifiedBagScreen());
+            this.minecraft.setScreen(new UnifiedBagScreen(this.minecraft.screen));
             return true;
         }
         if (this.sortBtn.contains(mx, my)) {
@@ -480,6 +459,31 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
         return true;
     }
 
+    @Override
+    public boolean mouseReleased(MouseButtonEvent event) {
+        return consumeMouseReleased(event.x(), event.y(), event.button());
+    }
+
+    @Override
+    public boolean mouseDragged(MouseButtonEvent event, double dragX, double dragY) {
+        return consumeMouseDragged(event.x(), event.y(), event.button());
+    }
+
+    public boolean consumeMouseReleased(double mouseX, double mouseY, int button) {
+        if (this.suppressed) {
+            return false;
+        }
+        if (this.mouseCaptured || isMouseOver(mouseX, mouseY)) {
+            this.mouseCaptured = false;
+            return true;
+        }
+        return false;
+    }
+
+    public boolean consumeMouseDragged(double mouseX, double mouseY, int button) {
+        return !this.suppressed && (this.mouseCaptured || isMouseOver(mouseX, mouseY));
+    }
+
     private void startSort() {
         if (!InvOps.carried().isEmpty()) {
             this.status = Component.translatable("gui.routinebags.status.cursor_busy");
@@ -504,7 +508,11 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
                 this.status = Component.translatable("gui.routinebags.cant_fit");
                 return;
             }
-            if (bestFitBag(carried) == null) {
+            if (isBundleStack(carried)) {
+                this.status = Component.translatable("gui.routinebags.status.bundle_cursor_store_blocked");
+                return;
+            }
+            if (totalInsertable(carried) <= 0) {
                 this.status = bagsFullMessage(carried);
                 return;
             }
@@ -548,12 +556,20 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
         return best;
     }
 
+    private int totalInsertable(ItemStack stack) {
+        int total = 0;
+        for (BagView bag : this.bags) {
+            total += bag.maxInsertable(stack);
+        }
+        return total;
+    }
+
     private Component bagsFullMessage(ItemStack stack) {
         int maxFree = 0;
         for (BagView bag : this.bags) {
             if (bag.kind == BagKind.BUNDLE && bag.mutable) {
                 Fraction freeFrac = Fraction.ONE.subtract(bag.weightUsed);
-                maxFree = Math.max(maxFree, Mth.mulAndTruncate(freeFrac, BagView.DISPLAY_UNITS));
+                maxFree += Mth.mulAndTruncate(freeFrac, BagView.DISPLAY_UNITS);
             }
         }
         return Component.translatable("gui.routinebags.status.bags_full_detail", unitsPerItem(stack), maxFree);
@@ -561,6 +577,10 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
 
     private static int unitsPerItem(ItemStack stack) {
         return Math.max(1, Mth.ceil(BagView.unitWeight(stack).floatValue() * BagView.DISPLAY_UNITS));
+    }
+
+    private static boolean isBundleStack(ItemStack stack) {
+        return stack.get(DataComponents.BUNDLE_CONTENTS) != null;
     }
 
     private boolean busyBlocked() {
@@ -591,29 +611,12 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
             toggleOpen();
             return true;
         }
-        if (!this.open) {
-            return false;
-        }
-        if (!this.focused && !this.searchBox.isFocused()) {
-            return false;
-        }
-        if (event.key() == GLFW.GLFW_KEY_ESCAPE && !this.query.isEmpty()) {
-            clearSearch();
-            return true;
-        }
-        if (event.key() == GLFW.GLFW_KEY_SLASH && !this.searchBox.isFocused()) {
-            this.searchBox.setFocused(true);
-            return true;
-        }
-        return this.searchBox.keyPressed(event);
+        return false;
     }
 
     @Override
     public boolean charTyped(net.minecraft.client.input.CharacterEvent event) {
-        if (!this.open) {
-            return false;
-        }
-        return this.searchBox.charTyped(event);
+        return false;
     }
 
     public void toggleOpen() {
@@ -630,11 +633,19 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
         return Keybinds.OPEN_UNIFIED.get().matches(new KeyEvent(keyCode, scanCode, modifiers));
     }
 
-    private void clearSearch() {
-        this.query = "";
-        this.scrollRow = 0;
-        this.searchBox.setValue("");
-        refresh();
+    public boolean isOpen() {
+        return this.open;
+    }
+
+    public void setSuppressed(boolean suppressed) {
+        if (this.suppressed == suppressed) {
+            return;
+        }
+        this.suppressed = suppressed;
+        if (suppressed) {
+            this.mouseCaptured = false;
+            setFocused(false);
+        }
     }
 
     private boolean shiftDown() {
@@ -644,7 +655,10 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
 
     @Override
     public boolean isMouseOver(double mouseX, double mouseY) {
-        if (this.tabRect.contains(mouseX, mouseY)) {
+        if (this.suppressed) {
+            return false;
+        }
+        if (!this.open && this.tabRect.contains(mouseX, mouseY)) {
             return true;
         }
         return this.open && mouseX >= this.x && mouseX < this.x + W && mouseY >= this.y && mouseY < this.y + this.h;
@@ -653,14 +667,11 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
     @Override
     public void setFocused(boolean focused) {
         this.focused = focused;
-        if (!focused) {
-            this.searchBox.setFocused(false);
-        }
     }
 
     @Override
     public boolean isFocused() {
-        return this.focused || this.searchBox.isFocused();
+        return this.focused;
     }
 
     @Override

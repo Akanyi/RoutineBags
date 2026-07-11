@@ -6,12 +6,14 @@ final class Wire {
     static final String HELLO = "routinebags:hello";
     static final String SORT_REQUEST = "routinebags:sort_request";
     static final String SORT_RESULT = "routinebags:sort_result";
+    static final String STORE_REQUEST = "routinebags:store_request";
+    static final String STORE_RESULT = "routinebags:store_result";
 
-    static byte[] helloPayload() {
+    static byte[] helloPayload(boolean serverSort, boolean serverStore) {
         Writer w = new Writer();
         w.writeString("routinebagkkit");
-        w.writeBoolean(true);
-        w.writeBoolean(true);
+        w.writeBoolean(serverSort);
+        w.writeBoolean(serverStore);
         return w.toByteArray();
     }
 
@@ -23,7 +25,19 @@ final class Wire {
         return w.toByteArray();
     }
 
+    static byte[] storeResult(boolean success, int moved, String messageKey) {
+        Writer w = new Writer();
+        w.writeBoolean(success);
+        w.writeVarInt(moved);
+        w.writeString(messageKey);
+        return w.toByteArray();
+    }
+
     static int readSortMode(byte[] payload) {
+        return new Reader(payload).readVarInt();
+    }
+
+    static int readStoreSlot(byte[] payload) {
         return new Reader(payload).readVarInt();
     }
 

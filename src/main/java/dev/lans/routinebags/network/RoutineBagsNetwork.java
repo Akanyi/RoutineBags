@@ -21,6 +21,8 @@ public final class RoutineBagsNetwork {
     public static final Identifier HELLO_ID = id("hello");
     public static final Identifier SORT_REQUEST_ID = id("sort_request");
     public static final Identifier SORT_RESULT_ID = id("sort_result");
+    public static final Identifier STORE_REQUEST_ID = id("store_request");
+    public static final Identifier STORE_RESULT_ID = id("store_result");
 
     @SubscribeEvent
     public static void registerPayloads(RegisterPayloadHandlersEvent event) {
@@ -36,11 +38,17 @@ public final class RoutineBagsNetwork {
         registrar.playToClient(SortResultPayload.TYPE, SortResultPayload.STREAM_CODEC, (payload, context) -> {
             dispatchToClient("handleSortResult", SortResultPayload.class, payload);
         });
+        registrar.playToServer(StoreRequestPayload.TYPE, StoreRequestPayload.STREAM_CODEC, (payload, context) -> {
+            // Dedicated NeoForge servers do not implement server-side smart store yet; Paper RoutineBagkkit handles this channel.
+        });
+        registrar.playToClient(StoreResultPayload.TYPE, StoreResultPayload.STREAM_CODEC, (payload, context) -> {
+            dispatchToClient("handleStoreResult", StoreResultPayload.class, payload);
+        });
     }
 
     public static void sendHello(ServerPlayer player) {
         if (NetworkRegistry.hasChannel(player.connection, HELLO_ID)) {
-            player.connection.send(new HelloPayload("routinebags-mod", true, true));
+            player.connection.send(new HelloPayload("routinebags-mod", true, false));
         }
     }
 
@@ -63,7 +71,7 @@ public final class RoutineBagsNetwork {
         }
     }
 
-    public record HelloPayload(String provider, boolean serverSort, boolean pluginCompatible) implements CustomPacketPayload {
+    public record HelloPayload(String provider, boolean serverSort, boolean serverStore) implements CustomPacketPayload {
         public static final CustomPacketPayload.Type<HelloPayload> TYPE = new CustomPacketPayload.Type<>(HELLO_ID);
         public static final StreamCodec<RegistryFriendlyByteBuf, HelloPayload> STREAM_CODEC = StreamCodec.composite(
                 ByteBufCodecs.STRING_UTF8,
@@ -71,7 +79,7 @@ public final class RoutineBagsNetwork {
                 ByteBufCodecs.BOOL,
                 HelloPayload::serverSort,
                 ByteBufCodecs.BOOL,
-                HelloPayload::pluginCompatible,
+                HelloPayload::serverStore,
                 HelloPayload::new);
 
         @Override
@@ -103,6 +111,36 @@ public final class RoutineBagsNetwork {
                 ByteBufCodecs.STRING_UTF8,
                 SortResultPayload::messageKey,
                 SortResultPayload::new);
+
+        @Override
+        public Type<? extends CustomPacketPayload> type() {
+            return TYPE;
+        }
+    }
+
+    public record StoreRequestPayload(int menuSlot) implements CustomPacketPayload {
+        public static final CustomPacketPayload.Type<StoreRequestPayload> TYPE = new CustomPacketPayload.Type<>(STORE_REQUEST_ID);
+        public static final StreamCodec<RegistryFriendlyByteBuf, StoreRequestPayload> STREAM_CODEC = StreamCodec.composite(
+                ByteBufCodecs.VAR_INT,
+                StoreRequestPayload::menuSlot,
+                StoreRequestPayload::new);
+
+        @Override
+        public Type<? extends CustomPacketPayload> type() {
+            return TYPE;
+        }
+    }
+
+    public record StoreResultPayload(boolean success, int moved, String messageKey) implements CustomPacketPayload {
+        public static final CustomPacketPayload.Type<StoreResultPayload> TYPE = new CustomPacketPayload.Type<>(STORE_RESULT_ID);
+        public static final StreamCodec<RegistryFriendlyByteBuf, StoreResultPayload> STREAM_CODEC = StreamCodec.composite(
+                ByteBufCodecs.BOOL,
+                StoreResultPayload::success,
+                ByteBufCodecs.VAR_INT,
+                StoreResultPayload::moved,
+                ByteBufCodecs.STRING_UTF8,
+                StoreResultPayload::messageKey,
+                StoreResultPayload::new);
 
         @Override
         public Type<? extends CustomPacketPayload> type() {

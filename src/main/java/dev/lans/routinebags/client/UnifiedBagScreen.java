@@ -13,7 +13,6 @@ import dev.lans.routinebags.bag.BagScanner;
 import dev.lans.routinebags.bag.BagView;
 import dev.lans.routinebags.interact.CursorOps;
 import dev.lans.routinebags.interact.InvOps;
-import dev.lans.routinebags.interact.Moves;
 import dev.lans.routinebags.interact.StepRunner;
 import dev.lans.routinebags.merge.AggregatedIndex;
 import dev.lans.routinebags.merge.AggregatedIndex.Entry;
@@ -21,6 +20,7 @@ import dev.lans.routinebags.merge.AggregatedIndex.Source;
 import dev.lans.routinebags.merge.ItemKey;
 import dev.lans.routinebags.sort.SortController;
 import net.minecraft.ChatFormatting;
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.client.ScrollWheelHandler;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.EditBox;
@@ -56,6 +56,9 @@ public final class UnifiedBagScreen extends Screen {
     private static final int SIDEBAR_ROW_H = 20;
     private static final int BTN_H = 14;
     private static final int IMG_W = PAD + GRID_W + 6 + SIDEBAR_W + PAD;
+    private static final int GRID_TOP = 35;
+    private static final int MIN_GRID_ROWS = 3;
+    private static final int MAX_GRID_ROWS = 10;
 
     private static final int COL_PANEL = 0xF0060D16;
     private static final int COL_PANEL_INNER = 0xE90B1522;
@@ -80,6 +83,7 @@ public final class UnifiedBagScreen extends Screen {
 
     private final StepRunner runner = new StepRunner();
     private final SortController sorter = new SortController();
+    private final @Nullable Screen parent;
 
     private List<BagView> bags = List.of();
     private List<Entry> entries = List.of();
@@ -112,23 +116,28 @@ public final class UnifiedBagScreen extends Screen {
     private Rect offhandRect;
 
     public UnifiedBagScreen() {
+        this(null);
+    }
+
+    public UnifiedBagScreen(@Nullable Screen parent) {
         super(Component.translatable("gui.routinebags.title"));
+        this.parent = parent;
     }
 
     @Override
     protected void init() {
-        int btnRowH = BTN_H + 4;
+        int btnRowH = BTN_H + 18;
         int invH = 3 * CELL + 4 + CELL;
-        int fixedH = 22 + 4 + btnRowH + invH + 14 + PAD;
-        // 网格行数吃满可用高度：小窗口 6 行起步，大屏最多 10 行
-        this.gridRows = Math.clamp((this.height - fixedH - 10) / CELL, 6, 10);
+        int footerH = 22;
+        int fixedH = GRID_TOP + 4 + btnRowH + invH + footerH + PAD;
+        this.gridRows = Math.clamp((this.height - fixedH - 10) / CELL, MIN_GRID_ROWS, MAX_GRID_ROWS);
         this.gridH = this.gridRows * CELL;
         this.imgH = fixedH + this.gridH;
         this.left = (this.width - IMG_W) / 2;
         this.top = (this.height - this.imgH) / 2;
 
         int gridX = this.left + PAD;
-        int gridY = this.top + 22;
+        int gridY = this.top + GRID_TOP;
         this.gridRect = new Rect(gridX, gridY, GRID_W, this.gridH);
         this.sidebarRect = new Rect(gridX + GRID_W + 6, gridY, SIDEBAR_W, this.gridH);
         this.sidebarVisibleRows = Math.max(1, (this.gridH - 14) / SIDEBAR_ROW_H);
@@ -168,6 +177,12 @@ public final class UnifiedBagScreen extends Screen {
         if (serverSortResult != null) {
             this.waitingServerSort = false;
             this.status = Component.translatable(serverSortResult.messageKey(), serverSortResult.moves());
+        }
+        var serverStoreResult = ServerBridge.takeStoreResult();
+        if (serverStoreResult != null) {
+            this.waitingServerSort = false;
+            this.status = Component.translatable(serverStoreResult.messageKey(), serverStoreResult.moved());
+            refresh();
         }
 
         Component abortMsg = this.runner.takeAbortMessage();
@@ -304,7 +319,8 @@ public final class UnifiedBagScreen extends Screen {
             g.fill(trackX, thumbY, trackX + 3, thumbY + thumbH, COL_BORDER);
         }
         if (hovered != null) {
-            g.setComponentTooltipForNextFrame(this.font, entryTooltip(hovered), mouseX, mouseY, hovered.display);
+            g.setTooltipForNextFrame(this.font, entryTooltip(hovered), hovered.display.getTooltipImage(),
+                    mouseX, mouseY, hovered.display.get(DataComponents.TOOLTIP_STYLE));
         }
     }
 
@@ -357,7 +373,7 @@ public final class UnifiedBagScreen extends Screen {
             if (hover) {
                 // 原版 bundle 预览组件白嫖：自带内容网格和选中高亮
                 g.setTooltipForNextFrame(this.font, bagTooltip(bag, ordinal),
-                        bag.bagStack.getTooltipImage(), bag.bagStack, mouseX, mouseY);
+                        bag.bagStack.getTooltipImage(), mouseX, mouseY, bag.bagStack.get(DataComponents.TOOLTIP_STYLE));
             }
         }
         if (this.bags.size() > this.sidebarVisibleRows) {
@@ -443,7 +459,7 @@ public final class UnifiedBagScreen extends Screen {
     }
 
     private void drawPlayerInventory(GuiGraphicsExtractor g, int mouseX, int mouseY) {
-        drawSection(g, this.invRect.x - 3, this.invRect.y - 13, GRID_W + 6, 4 * CELL + 9,
+        drawSection(g, this.invRect.x - 3, this.invRect.y - 13, GRID_W + 6, 4 * CELL + 20,
                 Component.translatable("gui.routinebags.section.inventory"));
         ItemStack hoveredStack = ItemStack.EMPTY;
         for (int i = 0; i < 27; i++) {
@@ -466,7 +482,8 @@ public final class UnifiedBagScreen extends Screen {
             } else {
                 lines.add(Component.translatable("gui.routinebags.cant_fit").withStyle(ChatFormatting.RED));
             }
-            g.setTooltipForNextFrame(this.font, lines, hoveredStack.getTooltipImage(), hoveredStack, mouseX, mouseY);
+            g.setTooltipForNextFrame(this.font, lines, hoveredStack.getTooltipImage(),
+                    mouseX, mouseY, hoveredStack.get(DataComponents.TOOLTIP_STYLE));
         }
     }
 
@@ -609,7 +626,11 @@ public final class UnifiedBagScreen extends Screen {
                 this.status = Component.translatable("gui.routinebags.cant_fit");
                 return;
             }
-            if (bestFitBag(carried) == null) {
+            if (isBundleStack(carried)) {
+                this.status = Component.translatable("gui.routinebags.status.bundle_cursor_store_blocked");
+                return;
+            }
+            if (totalInsertable(carried) <= 0) {
                 this.status = bagsFullMessage(carried);
                 return;
             }
@@ -696,13 +717,21 @@ public final class UnifiedBagScreen extends Screen {
             this.status = Component.translatable("gui.routinebags.cant_fit");
             return;
         }
-        BagView bestBag = bestFitBag(stack);
-        if (bestBag == null) {
+        if (isBundleStack(stack)) {
+            this.status = Component.translatable("gui.routinebags.status.bundle_cursor_store_blocked");
+            return;
+        }
+        if (totalInsertable(stack) <= 0) {
             this.status = bagsFullMessage(stack);
             return;
         }
         this.status = null;
-        Moves.inventoryToBundle(this.runner, menuSlot, ItemKey.of(stack), bestBag.menuSlot);
+        if (ServerBridge.requestStore(menuSlot)) {
+            this.waitingServerSort = true;
+            this.status = Component.translatable("gui.routinebags.status.server_storing");
+            return;
+        }
+        CursorOps.storeInventoryStack(this.runner, menuSlot, ItemKey.of(stack));
     }
 
     private @Nullable BagView bestFitBag(ItemStack stack) {
@@ -718,13 +747,21 @@ public final class UnifiedBagScreen extends Screen {
         return best;
     }
 
-    /** 失败提示带上数字，不再让“总剩余 65 却放不进钓竿”显得莫名其妙 */
+    private int totalInsertable(ItemStack stack) {
+        int total = 0;
+        for (BagView bag : this.bags) {
+            total += bag.maxInsertable(stack);
+        }
+        return total;
+    }
+
+    /** 失败提示带上数字，方便判断是总容量不足，还是单件物品本身占满 64 单位。 */
     private Component bagsFullMessage(ItemStack stack) {
         int maxFree = 0;
         for (BagView bag : this.bags) {
             if (bag.kind == BagKind.BUNDLE && bag.mutable) {
                 Fraction freeFrac = Fraction.ONE.subtract(bag.weightUsed);
-                maxFree = Math.max(maxFree, Mth.mulAndTruncate(freeFrac, BagView.DISPLAY_UNITS));
+                maxFree += Mth.mulAndTruncate(freeFrac, BagView.DISPLAY_UNITS);
             }
         }
         return Component.translatable("gui.routinebags.status.bags_full_detail", unitsPerItem(stack), maxFree);
@@ -732,6 +769,10 @@ public final class UnifiedBagScreen extends Screen {
 
     private static int unitsPerItem(ItemStack stack) {
         return Math.max(1, Mth.ceil(BagView.unitWeight(stack).floatValue() * BagView.DISPLAY_UNITS));
+    }
+
+    private static boolean isBundleStack(ItemStack stack) {
+        return stack.get(DataComponents.BUNDLE_CONTENTS) != null;
     }
 
     private void reportLeftover() {
@@ -834,6 +875,17 @@ public final class UnifiedBagScreen extends Screen {
             this.searchBox.setValue("");
         }
         refresh();
+    }
+
+    @Override
+    public void onClose() {
+        if (this.parent != null && this.minecraft != null && this.minecraft.player != null
+                && this.parent instanceof net.minecraft.client.gui.screens.inventory.AbstractContainerScreen<?> containerScreen
+                && this.minecraft.player.containerMenu == containerScreen.getMenu()) {
+            this.minecraft.setScreen(this.parent);
+            return;
+        }
+        super.onClose();
     }
 
     @Override

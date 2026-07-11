@@ -1,0 +1,8 @@
+features:
+  serverSort: true
+  serverStore: true
+
+limits:
+  cooldownMillis: 750
+  maxBags: 36
+  maxItemsPerRequest: 4096

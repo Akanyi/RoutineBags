@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "id": "routinebags",
+  "version": "${version}",
+  "name": "Routine Bags",
+  "description": "Unified storage view for bundles and container items, with vanilla-safe cross-bag operations.",
+  "authors": [
+    "LANS"
+  ],
+  "contact": {
+    "sources": "https://github.com/Akanyi/RoutineBags",
+    "issues": "https://github.com/Akanyi/RoutineBags/issues"
+  },
+  "license": "MIT",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "dev.lans.routinebags.RoutineBagsClient"
+    ]
+  },
+  "mixins": [
+    {
+      "config": "routinebags.client.mixins.json",
+      "environment": "client"
+    }
+  ],
+  "depends": {
+    "fabricloader": ">=0.19.3",
+    "minecraft": "~26.1.2",
+    "java": ">=25",
+    "fabric-api": ">=0.154.2+26.1.2"
+  }
+}
