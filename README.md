@@ -1,127 +1,226 @@
-# Routine Bags（收纳袋统一管理）
+# Routine Bags
 
-Minecraft 26.1.2 客户端 mod，提供 NeoForge 26.1.2.x 与 Fabric Loader 0.19.3 两种版本，把你身上的收纳袋（bundle）和潜影盒
-合并成一个统一的大背包视图，支持搜索、快速整理、剩余容量显示。
+[![Minecraft](https://img.shields.io/badge/Minecraft-26.1.2-62B47A)](https://www.minecraft.net/)
+[![NeoForge](https://img.shields.io/badge/NeoForge-26.1.2.x-EA5C2B)](https://neoforged.net/)
+[![Fabric](https://img.shields.io/badge/Fabric-Loader%200.19.3-DBD0B4)](https://fabricmc.net/)
+[![Release](https://img.shields.io/github/v/release/Akanyi/RoutineBags)](https://github.com/Akanyi/RoutineBags/releases/latest)
+[![License](https://img.shields.io/github/license/Akanyi/RoutineBags)](LICENSE)
 
-客户端可单独安装，原版联机服可直接使用；服务器安装 RoutineBags，或 Paper `26.1.2` 服务器安装 RoutineBagkkit 插件时，会启用服务端增强模式。
+把散落在多个收纳袋里的物品，合并成一个可搜索、可整理、可直接存取的统一终端。
 
-## 功能
+Routine Bags 是面向 Minecraft `26.1.2` 的客户端模组，同时提供 NeoForge 与 Fabric 版本。只安装客户端即可连接原版或第三方服务器使用；如果服务器安装可选的增强组件，还可以把整理和智能存入交给服务端完成。
 
-- **统一视图**：按 `B`（可改键）打开，身上所有收纳袋 / 潜影盒里的物品合并展示为一个大背包。
-- **聚合计数**：同种物品跨袋合并成一个条目，总数不受 64 上限约束（例如 3 个袋子里的箭合并显示
-  `箭 ×152`），悬停可见每个袋子的明细分布。
-- **搜索**：按物品名（中英文）或注册名过滤，不匹配的条目变暗。
-- **快速整理**：一键把所有收纳袋里的物品按类别归并——同种物品集中到同一个袋子、袋子按顺序填满，默认按创造模式搜索页顺序排序。
-  普通服务器上通过**模拟合法的背包点击**完成；服务器安装 RoutineBags / RoutineBagkkit 后，整理会由服务端直接处理，更稳也更快。
-- **容量显示**：每个袋子显示已用/剩余容量（收纳袋按原版重量单位 64 格，潜影盒按 27 槽），
-  另有全局汇总。
+> Unified bundle storage terminal for Minecraft 26.1.2, available for NeoForge and Fabric. Client-only usage works on ordinary servers; optional server components provide faster, more reliable operations.
 
-## 界面操作（AE 终端式 + 原版语义）
+## 下载
 
-| 区域 | 操作 | 效果 |
+前往 [GitHub Releases](https://github.com/Akanyi/RoutineBags/releases/latest) 下载。客户端只选择一种加载器版本，不要混装。
+
+| 文件 | 用途 | 运行位置 |
 |---|---|---|
-| 聚合网格 | 空手左键 | 拿**一组**到光标（不够一组就跨袋自动凑齐） |
-| 聚合网格 | 空手右键 | 拿**半组**到光标（跨袋凑齐后对半切） |
-| 聚合网格 | Shift+左键 | 取一组直接进背包 |
-| 聚合网格 | 光标持普通物品左键 | 跨袋全存（一个袋装不下自动换下一个） |
-| 聚合网格 | 光标持普通物品右键 | 只存 **1 个**进袋 |
-| 背包区 | 左键 / 右键 | 原版拿起、放下、取半堆、放单个 |
-| 背包区 | Shift+左键 | 智能存入最合适的收纳袋 |
-| 袋子列表 | 光标持物左键 | 存入该袋（原版 bundle 语义） |
-| 袋子列表 | 空手右键 | 取出该袋选中条目到光标 |
-| 袋子列表 | 滚轮 | 切换该袋的选中条目（同原版悬停滚轮） |
-| 袋子列表 | 空手左键 | 只看这个袋子（再点取消） |
+| `routinebags-0.2.0.jar` | NeoForge 模组 | NeoForge 客户端；也可选装到 NeoForge 服务端 |
+| `routinebags-fabric-0.2.0.jar` | Fabric 模组 | Fabric 客户端，需要 Fabric API |
+| `routinebagkkit-0.2.0.jar` | RoutineBagkkit 插件 | Paper `26.1.2` 服务端，可选 |
 
-跨袋凑组的原理：先把目标物品聚合到存量最大的袋子（袋对袋合法搬运，顺手完成整理），
-凑够后整条目取出到光标；半组再借一个空背包槽用原版"右键拿一半"切分。
-全程都是协议合法点击，逐 tick 限速。
+## 主要功能
 
-物品悬停会显示"占用 X 单位/个"。注意原版容量规则：**不可堆叠物品（工具、钓竿等）每个占满
-64 单位**，这类物品不能把一个物品拆成两个 32 单位分别塞进两个袋子，所以"两个袋子各剩 32"仍然放不进一把钓竿。可堆叠物品则可以跨袋分摊，例如两个袋子各剩 32 单位，可以把一组 64 个普通物品分两段存进去。
+- **统一收纳终端**：按 `B` 打开，将玩家背包和副手中的所有收纳袋聚合到一个界面。
+- **跨袋聚合计数**：同种物品只显示一个条目，并展示它在各个袋子中的来源和总数。
+- **搜索与筛选**：按物品显示名称或注册名搜索，也可以只查看某一个袋子的内容。
+- **跨袋取出**：左键拿一组、右键拿半组、`Shift + 左键` 直接放进玩家背包；数量不足时会自动从多个袋子凑齐。
+- **跨袋存入**：光标持物点击聚合网格即可自动分配到多个有剩余容量的袋子。
+- **智能整理**：合并同类物品并压缩袋子空间，支持创造模式顺序、注册名、名称和数量四种排序方式。
+- **容量可视化**：显示每个收纳袋的原版重量占用，以及所有可写袋子的总容量。
+- **容器界面挂载**：打开箱子、工作台等容器时，可在侧边展开轻量 RTbags 面板；不会移动或改写原容器布局。
+- **只读容器浏览**：可选展示潜影盒等带 `minecraft:container` 组件的物品内容。
+- **中英文界面**：内置简体中文和英文翻译。
 
-另外，手上拿着收纳袋时不要点聚合网格做"光标持物存入"：原版允许袋套袋，鼠标上的袋子点击另一个袋子时会变成"手里的袋子吸收槽里的袋子"。Routine Bags 会拦截这个智能存入入口，避免手上的袋子把背包里的其他袋子吞进去；需要套袋请到袋子列表/背包槽位里按原版语义手动操作。
+## 兼容矩阵
 
-## 识别规则
+| 组件 | 版本 | 必需 |
+|---|---|---|
+| Minecraft | `26.1.2` | 是 |
+| Java | `25` | 是 |
+| NeoForge | `26.1.2.x` | NeoForge 客户端需要 |
+| Fabric Loader | `0.19.3` 或更高兼容版本 | Fabric 客户端需要 |
+| Fabric API | `0.154.2+26.1.2` 或更高兼容版本 | Fabric 客户端需要 |
+| Paper | `26.1.2` | 仅 RoutineBagkkit 需要 |
 
-基于数据组件而非物品 ID 白名单：
+Routine Bags 通过原版数据组件识别收纳物品，而不是维护物品 ID 白名单：
 
-- 带 `minecraft:bundle_contents` 组件 → 按收纳袋处理（可读写）；
-- 带 `minecraft:container` 组件 → 按容器物品处理（只读展示）。26.1 起箱子/熔炉/置物架等
-  也自带这个组件，为避免噪音：**非潜影盒类只在装有东西时才显示**，空箱子按普通建材对待。
-- 能否存入收纳袋完全遵循原版 `canFitInsideContainerItems` 判定（箱子可以进袋、潜影盒不行、
-  袋子可以套袋子并占 1/16 + 内容物重量）。
+- `minecraft:bundle_contents`：作为可交互的收纳袋处理。
+- `minecraft:container`：作为只读容器处理；空的普通容器默认不会显示，空潜影盒仍可显示。
 
-## 运行模式
-
-- **客户端脚本模式**：服务器没有安装 RoutineBags 能力时启用。所有存取/整理都走原版玩家背包点击协议，服务器无需安装任何东西。
-- **服务端增强模式**：NeoForge 服务器安装 RoutineBags mod，或 Paper `26.1.2` 服务器安装 RoutineBagkkit 插件时启用。界面右下角会显示“服务端增强”。当前服务端增强已接管“整理”操作；RoutineBagkkit 还支持背包区 `Shift+左键` 的服务端智能存入，由服务端按容量把来源堆分摊进多个收纳袋，减少第三方服务器延迟、反作弊、点击限流带来的误中止。
-
-RoutineBagkkit 插件兼容协议预留在这些 custom payload 通道上：
-
-- `routinebags:hello`：服务端声明能力，字段为 `provider`、`serverSort`、`serverStore`。
-- `routinebags:sort_request`：客户端请求服务端整理，字段为排序模式序号。
-- `routinebags:sort_result`：服务端返回整理结果，字段为 `success`、`moves`、`messageKey`。
-- `routinebags:store_request`：客户端请求服务端智能存入，字段为来源背包菜单槽位。
-- `routinebags:store_result`：服务端返回存入结果，字段为 `success`、`moved`、`messageKey`。
-
-NeoForge 服务器直接安装本 mod 即可；Paper 侧使用本仓库的 `routinebagkkit` 子项目产物。
-
-## 原版联机服上的边界（实话实说）
-
-- **潜影盒只读**：物品形态的潜影盒在原版服务器上没有任何合法点击能改动其内容（必须放置才能开），
-  所以统一视图里潜影盒内容物只参与展示 / 搜索 / 容量统计，不参与整理和存取。
-- **“突破堆叠上限”是聚合显示层面的**：底层每一格仍受服务器的 64 上限管辖。真·把超过上限的
-  数量写进单个物品堆，需要服务端配合，纯客户端 mod 在别人的服务器上做不到——谁说能做到都是骗你。
-- 整理操作全部走原版容器点击协议（`containerId 0` 玩家背包菜单），不发送任何非法数据包。
-
-## 兼容性
-
-识别规则基于数据组件而非物品 ID 白名单：
-
-- 带 `minecraft:bundle_contents` 组件 → 按收纳袋处理（可读写）；
-- 带 `minecraft:container` 组件 → 按容器物品处理（只读展示），潜影盒即属此类。
-
-因此其他 mod 的袋子只要用这两个原版组件存数据，会被自动识别。
+因此，其他模组只要复用这些原版组件，通常也能被自动识别。
 
 ## 安装
 
-1. 安装 Minecraft `26.1.2` 对应的 NeoForge `26.1.2.x`，或 Fabric Loader `0.19.3` + Fabric API `0.154.2+26.1.2`。
-2. NeoForge 使用 `routinebags-0.2.0.jar`；Fabric 使用 `routinebags-fabric-0.2.0.jar`。二选一放进客户端的 `mods` 文件夹，不要混装。
-3. 启动游戏，在 `选项 → 控制 → 按键绑定 → 收纳袋管理` 里可调整“打开统一收纳视图”，默认按键是 `B`。
+### NeoForge 客户端
 
-只装客户端即可使用；如果你能控制服务器：
+1. 安装 Minecraft `26.1.2` 对应的 NeoForge。
+2. 下载 `routinebags-0.2.0.jar`。
+3. 将 jar 放入客户端的 `mods` 文件夹。
 
-- NeoForge 服务端：把 `routinebags-0.2.0.jar` 放进服务端 `mods` 文件夹。
-- Paper `26.1.2` 服务端：把 `routinebagkkit-0.2.0.jar` 放进服务端 `plugins` 文件夹。
+### Fabric 客户端
 
-两种服务端方案都会让客户端自动显示“服务端增强”。
+1. 安装 Fabric Loader `0.19.3` 和适用于 Minecraft `26.1.2` 的 Fabric API。
+2. 下载 `routinebags-fabric-0.2.0.jar`。
+3. 将 Routine Bags 和 Fabric API 一起放入客户端的 `mods` 文件夹。
 
-## 配置
+### 可选服务端增强
 
-NeoForge 可从模组配置界面进入，配置文件为 `config/routinebags-client.toml`。Fabric 使用 `config/routinebags-client.properties`，首次启动自动生成。
+普通服务器不需要安装任何东西。需要服务端增强时，可以选择：
 
-- `opsPerTick`：整理/搬运时每 tick 最多发送多少次合法背包点击。默认 `2`，服务器有反作弊时别调太高。
-- `stepDelayTicks`：脚本每一步之间等待多少 tick。默认 `1`。第三方服务器如果频繁提示“背包状态发生了意外变化”，可以调到 `2` 或 `3`。
-- `maxSortSteps`：单次整理最多执行多少步，防止异常状态无限循环。默认 `400`。
-- `showReadOnlyContainers`：是否在统一视图里显示只读容器内容，例如物品形态潜影盒。默认开启。
-- `mountInContainerScreens`：是否在箱子、工作台等容器界面旁挂载 RTbags 面板。默认开启。
-- `mountedPanelOpenByDefault`：容器界面的挂载面板是否默认展开。默认关闭。
-- `sortMode`：默认排序方式，可选创造标签页顺序、注册名、名称、数量。默认 `BY_CREATIVE`。
+- **NeoForge 服务端**：安装同一个 `routinebags-0.2.0.jar`，提供服务端整理。
+- **Paper 服务端**：安装 `routinebagkkit-0.2.0.jar`，提供服务端整理和跨袋智能存入。
 
-## 开发
+Fabric 专用服务端组件目前尚未提供；Fabric 客户端仍可使用完整的客户端脚本模式。
 
+## 快速上手
+
+1. 默认按 `B` 打开完整统一终端。
+2. 在 `选项 -> 控制 -> 按键绑定 -> 收纳袋管理` 中可以修改快捷键。
+3. 打开箱子或工作台时，点击侧边的 `RT` 标签展开挂载面板；再次按绑定快捷键也可以切换。
+4. 配方书展开时，挂载面板会暂时隐藏，关闭配方书后自动恢复。
+
+### 聚合终端操作
+
+| 区域 | 操作 | 效果 |
+|---|---|---|
+| 聚合网格 | 空光标左键 | 跨袋拿取一组 |
+| 聚合网格 | 空光标右键 | 跨袋拿取半组 |
+| 聚合网格 | `Shift + 左键` | 跨袋拿取一组并放入玩家背包 |
+| 聚合网格 | 光标持普通物品左键 | 跨多个袋子存入整堆 |
+| 聚合网格 | 光标持普通物品右键 | 存入一个物品 |
+| 玩家背包 | 左键 / 右键 | 使用原版拿取和放置语义 |
+| 玩家背包 | `Shift + 左键` | 将该槽位中的物品智能存入袋子 |
+| 袋子列表 | 空光标左键 | 仅显示该袋内容；再次点击取消筛选 |
+| 袋子列表 | 空光标右键 | 取出当前选中的袋内条目 |
+| 袋子列表 | 滚轮 | 切换收纳袋当前选中的条目 |
+| 袋子列表 | 光标持物左键 | 按原版语义存入指定袋子 |
+
+## 工作模式
+
+### 客户端脚本模式
+
+服务器没有安装兼容组件时，所有写操作都会拆成节流的原版容器点击：
+
+- 不直接修改服务端物品数据。
+- 不发送超出原版容器交互语义的库存操作。
+- 可以通过 `stepDelayTicks` 降低高延迟服务器或反作弊插件造成的误中止。
+
+### 服务端增强模式
+
+客户端收到兼容服务端的能力声明后，会自动启用可用功能：
+
+- NeoForge 服务端模组：服务端整理。
+- RoutineBagkkit：服务端整理和服务端智能存入。
+
+界面右下角会显示当前模式和能力提供者。服务端可分别关闭整理或存入能力，客户端会自动回退到本地脚本。
+
+## 已知边界
+
+- **潜影盒等物品形态容器只读**：原版协议没有在物品未放置时修改其内部槽位的合法交互，因此它们只参与浏览、搜索和容量统计。
+- **聚合显示不改变堆叠上限**：终端可以显示跨袋总数，但底层物品堆仍遵守服务器的原版上限。
+- **不可堆叠物品不可拆分容量**：工具、钓竿等通常单个占满 64 个收纳袋单位；两个各剩 32 单位的袋子仍放不下一件工具。
+- **自动存入不会处理收纳袋本身**：原版允许袋套袋，但自动操作容易产生反直觉结果。Routine Bags 会拦截这条路径；需要嵌套时请使用原版槽位操作手动完成。
+- **挂载面板只操作当前菜单可访问的玩家槽位**：某些特殊容器界面无法访问副手时，副手袋子不会出现在挂载面板中，但完整终端仍可使用。
+
+## 客户端配置
+
+- NeoForge：`config/routinebags-client.toml`
+- Fabric：`config/routinebags-client.properties`
+
+| 配置项 | 默认值 | 范围 | 说明 |
+|---|---:|---:|---|
+| `opsPerTick` | `2` | `1..10` | 每 tick 最多执行的模拟点击数 |
+| `stepDelayTicks` | `1` | `0..10` | 脚本步骤之间等待的 tick 数 |
+| `maxSortSteps` | `400` | `50..5000` | 单次整理的安全步数上限 |
+| `showReadOnlyContainers` | `true` | - | 是否展示只读容器内容 |
+| `mountInContainerScreens` | `true` | - | 是否在容器界面旁挂载 RTbags 面板 |
+| `mountedPanelOpenByDefault` | `false` | - | 挂载面板是否默认展开 |
+| `sortMode` | `BY_CREATIVE` | 枚举 | 默认排序方式 |
+
+如果第三方服务器经常提示背包状态发生意外变化，优先将 `stepDelayTicks` 调到 `2` 或 `3`，而不是盲目提高 `opsPerTick`。
+
+## RoutineBagkkit
+
+Paper 插件配置位于 `plugins/RoutineBagkkit/config.yml`：
+
+```yaml
+features:
+  serverSort: true
+  serverStore: true
+
+limits:
+  cooldownMillis: 750
+  maxBags: 36
+  maxItemsPerRequest: 4096
 ```
-./gradlew build                # NeoForge + RoutineBagkkit
-./gradlew runClient            # NeoForge 开发客户端
-cd fabric
-./gradlew build                # Fabric 产物在 fabric/build/libs/
-./gradlew runClient            # Fabric 开发客户端
+
+权限节点默认允许所有玩家使用：
+
+- `routinebagkkit.use`
+- `routinebagkkit.sort`
+- `routinebagkkit.store`
+
+## 兼容协议
+
+第三方服务端实现可以通过以下 custom payload 通道提供兼容能力：
+
+| 通道 | 方向 | 内容 |
+|---|---|---|
+| `routinebags:hello` | 服务端 -> 客户端 | `provider`、`serverSort`、`serverStore` |
+| `routinebags:sort_request` | 客户端 -> 服务端 | 排序模式序号 |
+| `routinebags:sort_result` | 服务端 -> 客户端 | `success`、`moves`、`messageKey` |
+| `routinebags:store_request` | 客户端 -> 服务端 | 来源 InventoryMenu 槽位 |
+| `routinebags:store_result` | 服务端 -> 客户端 | `success`、`moved`、`messageKey` |
+
+所有整数使用 Minecraft VarInt，字符串使用 VarInt 长度前缀的 UTF-8 编码。
+
+## 从源码构建
+
+需要 JDK `25`。
+
+### NeoForge 与 RoutineBagkkit
+
+```powershell
+.\gradlew.bat clean build
 ```
 
-需要 JDK 25（Gradle 工具链会自动下载）。
+产物：
 
-NeoForge 开发环境的 `runClient` 已接入 DevLogin（`com.ptsmods:devlogin:3.5.1:neoforge`），并默认传入 `--msa`，首次启动会按提示完成 Microsoft 账号登录。DevLogin 只作为开发运行时依赖，不会打进发布 jar。DevLogin 的 `async-http-client` 分支会和 Minecraft 锁定的 Netty 版本打架，因此构建里排除了它，让 DevLogin 使用 Java 内置 HTTP 客户端。Fabric 使用独立的 `fabric/` 构建和 Gradle 9.5.1，并直接复用根项目的加载器无关业务源码。
+- `build/libs/routinebags-<version>.jar`
+- `routinebagkkit/build/libs/routinebagkkit-<version>.jar`
 
-## 许可
+### Fabric
 
-MIT
+```powershell
+Push-Location .\fabric
+.\gradlew.bat clean build
+Pop-Location
+```
+
+产物：`fabric/build/libs/routinebags-fabric-<version>.jar`
+
+Linux 和 macOS 可将 `gradlew.bat` 替换为 `./gradlew`。
+
+## 项目结构
+
+```text
+src/main/          NeoForge 入口、服务端实现与共享业务源码
+fabric/            Fabric 平台适配和独立 Loom 构建
+routinebagkkit/    Paper 服务端增强插件
+```
+
+Fabric 构建会直接复用根项目中与加载器无关的业务源码。修改共享逻辑时，请避免引入 NeoForge 或 Fabric 专属 API。
+
+## 反馈与贡献
+
+- Bug、兼容性问题和功能建议请提交到 [Issues](https://github.com/Akanyi/RoutineBags/issues)。
+- 报告问题时请附上 Minecraft 版本、加载器及版本、服务器类型、复现步骤和相关日志。
+- Pull Request 请保持改动聚焦，并至少验证受影响的 NeoForge、Fabric 或 RoutineBagkkit 构建。
+
+## 许可证
+
+本项目基于 [MIT License](LICENSE) 开源。

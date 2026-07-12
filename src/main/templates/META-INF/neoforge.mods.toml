@@ -1,6 +1,6 @@
 license="${mod_license}"
-issueTrackerURL="https://github.com/lans/RoutineBags/issues"
-displayURL="https://github.com/lans/RoutineBags"
+issueTrackerURL="https://github.com/Akanyi/RoutineBags/issues"
+displayURL="https://github.com/Akanyi/RoutineBags"
 
 [[mods]]
 modId="${mod_id}"
