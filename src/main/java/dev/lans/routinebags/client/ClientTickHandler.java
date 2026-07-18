@@ -13,6 +13,8 @@ public final class ClientTickHandler {
     @SubscribeEvent
     static void onClientTickPost(ClientTickEvent.Post event) {
         Minecraft mc = Minecraft.getInstance();
+        ServerBridge.tick();
+        RecipeBagSupport.tick();
         while (Keybinds.OPEN_UNIFIED.get().consumeClick()) {
             // IN_GAME 冲突上下文已保证没有屏幕打开，双保险再查一次
             if (mc.player != null && mc.screen == null) {

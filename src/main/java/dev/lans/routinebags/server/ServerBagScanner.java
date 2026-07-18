@@ -12,8 +12,8 @@ import net.minecraft.world.inventory.InventoryMenu;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.component.BundleContents;
 
-final class ServerBagScanner {
-    static List<BagView> scanMutableBundles(ServerPlayer player) {
+public final class ServerBagScanner {
+    public static List<BagView> scanMutableBundles(ServerPlayer player) {
         Inventory inv = player.getInventory();
         List<BagView> out = new ArrayList<>();
         for (int i = 0; i < Inventory.INVENTORY_SIZE; i++) {
@@ -23,11 +23,24 @@ final class ServerBagScanner {
         return out;
     }
 
-    static int menuSlotForInv(int invIndex) {
+    public static int menuSlotForInv(int invIndex) {
         if (invIndex == Inventory.SLOT_OFFHAND) {
             return InventoryMenu.SHIELD_SLOT;
         }
         return invIndex < Inventory.SELECTION_SIZE ? InventoryMenu.USE_ROW_SLOT_START + invIndex : invIndex;
+    }
+
+    public static int invIndexForMenuSlot(int menuSlot) {
+        if (menuSlot == InventoryMenu.SHIELD_SLOT) {
+            return Inventory.SLOT_OFFHAND;
+        }
+        if (menuSlot >= InventoryMenu.INV_SLOT_START && menuSlot < InventoryMenu.INV_SLOT_END) {
+            return menuSlot;
+        }
+        if (menuSlot >= InventoryMenu.USE_ROW_SLOT_START && menuSlot < InventoryMenu.USE_ROW_SLOT_END) {
+            return menuSlot - InventoryMenu.USE_ROW_SLOT_START;
+        }
+        return -1;
     }
 
     private static void recognize(List<BagView> out, ItemStack stack, int invIndex, int menuSlot) {

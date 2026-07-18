@@ -14,5 +14,13 @@ public final class ServerConnectionEvents {
         }
     }
 
+    @SubscribeEvent
+    public static void onPlayerLoggedOut(PlayerEvent.PlayerLoggedOutEvent event) {
+        if (event.getEntity() instanceof net.minecraft.server.level.ServerPlayer player) {
+            dev.lans.routinebags.server.ServerStoreService.clearPlayer(player);
+            dev.lans.routinebags.server.ServerTakeService.clearPlayer(player);
+        }
+    }
+
     private ServerConnectionEvents() {}
 }

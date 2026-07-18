@@ -54,21 +54,6 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
     private static final int HEADER_H = 18;
     private static final int SECTION_HEADER_H = 11;
 
-    private static final int COL_PANEL = 0xF0060D16;
-    private static final int COL_PANEL_INNER = 0xE90B1522;
-    private static final int COL_PANEL_HEADER = 0xF20D2032;
-    private static final int COL_BORDER = 0xFF244A63;
-    private static final int COL_BORDER_BRIGHT = 0xFF3E8CB0;
-    private static final int COL_CELL = 0xFF101A26;
-    private static final int COL_CELL_INSET = 0xFF07101A;
-    private static final int COL_CELL_HOVER = 0x663FAFD6;
-    private static final int COL_TEXT_DIM = 0xFF8BA8B8;
-    private static final int COL_TEXT_AE = 0xFF77D8F0;
-    private static final int COL_BTN = 0xFF12283A;
-    private static final int COL_BTN_HOVER = 0xFF1B3F57;
-    private static final int COL_BAR_BG = 0xFF071018;
-    private static final int COL_BAR_GRID = 0x663E8CB0;
-
     private record Rect(int x, int y, int w, int h) {
         boolean contains(double mx, double my) {
             return mx >= this.x && mx < this.x + this.w && my >= this.y && my < this.y + this.h;
@@ -90,10 +75,13 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
     private @Nullable Component status;
     private boolean sorterWasActive;
     private boolean waitingServerSort;
+    private int pendingTakeRequest = -1;
+    private int pendingTakeTicks;
     private boolean focused;
     private boolean open = openState;
     private boolean mouseCaptured;
     private boolean suppressed;
+    private boolean layoutAvailable;
 
     private int x;
     private int y;
@@ -120,7 +108,15 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
         this.h = fixedH + this.gridH;
         int leftX = containerLeft - W - PANEL_GAP;
         int rightX = containerLeft + containerW + PANEL_GAP;
-        this.x = leftX >= 4 ? leftX : Math.min(rightX, Math.max(4, screenW - W - 4));
+        boolean fitsLeft = leftX >= 4;
+        boolean fitsRight = rightX + W <= screenW - 4;
+        this.layoutAvailable = fitsLeft || fitsRight;
+        if (!this.layoutAvailable) {
+            this.mouseCaptured = false;
+            setFocused(false);
+            return;
+        }
+        this.x = fitsLeft ? leftX : rightX;
         this.y = Mth.clamp(containerTop, 4, Math.max(4, screenH - this.h - 4));
         this.tabRect = new Rect(tabX(screenW, containerLeft), Mth.clamp(this.y + 8, 4, Math.max(4, screenH - TAB_H - 4)), TAB_W, TAB_H);
         this.closeBtn = new Rect(this.x + W - PAD - 12, this.y + 3, 12, 12);
@@ -161,6 +157,19 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
             this.waitingServerSort = false;
             this.status = Component.translatable(serverSortResult.messageKey(), serverSortResult.moves());
         }
+        if (this.pendingTakeRequest >= 0) {
+            var serverTakeResult = ServerBridge.takeTakeResult(this.pendingTakeRequest);
+            if (serverTakeResult != null) {
+                this.pendingTakeRequest = -1;
+                this.pendingTakeTicks = 0;
+                this.status = Component.translatable(serverTakeResult.messageKey(), serverTakeResult.moved());
+                refresh();
+            } else if (--this.pendingTakeTicks <= 0) {
+                ServerBridge.cancelTakeRequest(this.pendingTakeRequest);
+                this.pendingTakeRequest = -1;
+                this.status = Component.translatable("gui.routinebags.status.server_take_failed");
+            }
+        }
 
         Component abortMsg = this.runner.takeAbortMessage();
         if (abortMsg != null) {
@@ -181,6 +190,18 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
         this.runner.clear();
         this.sorter.cancel();
         this.waitingServerSort = false;
+        ServerBridge.cancelTakeRequest(this.pendingTakeRequest);
+        this.pendingTakeRequest = -1;
+        this.pendingTakeTicks = 0;
+    }
+
+    public boolean hasActiveOperation() {
+        return this.runner.busy() || this.sorter.isActive() || this.waitingServerSort
+                || this.pendingTakeRequest >= 0;
+    }
+
+    public boolean isMountedTo(AbstractContainerMenu menu) {
+        return this.mountedMenu == menu;
     }
 
     private void refresh() {
@@ -207,7 +228,7 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float partialTick) {
-        if (this.suppressed) {
+        if (this.suppressed || !this.layoutAvailable) {
             return;
         }
         if (!this.open) {
@@ -216,11 +237,9 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
         if (!this.open || this.h <= 0) {
             return;
         }
-        g.fill(this.x, this.y, this.x + W, this.y + this.h, COL_PANEL);
-        g.fill(this.x + 1, this.y + 1, this.x + W - 1, this.y + 17, COL_PANEL_HEADER);
-        g.outline(this.x, this.y, W, this.h, COL_BORDER_BRIGHT);
-        g.outline(this.x + 2, this.y + 2, W - 4, this.h - 4, COL_BORDER);
-        g.text(this.minecraft.font, Component.translatable("gui.routinebags.mount.title"), this.x + PAD, this.y + 5, COL_TEXT_AE);
+        VanillaUi.panel(g, this.x, this.y, W, this.h);
+        g.text(this.minecraft.font, Component.translatable("gui.routinebags.mount.title"),
+                this.x + PAD, this.y + 5, VanillaUi.TEXT);
         drawCloseButton(g, mouseX, mouseY);
 
         drawGrid(g, mouseX, mouseY);
@@ -230,14 +249,14 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
 
     private void drawTab(GuiGraphicsExtractor g, int mouseX, int mouseY) {
         boolean hover = this.tabRect.contains(mouseX, mouseY);
-        int fill = this.open ? COL_BTN_HOVER : COL_BTN;
-        g.fill(this.tabRect.x, this.tabRect.y, this.tabRect.x + this.tabRect.w, this.tabRect.y + this.tabRect.h,
-                hover ? COL_BTN_HOVER : fill);
-        g.outline(this.tabRect.x, this.tabRect.y, this.tabRect.w, this.tabRect.h, hover || this.open ? COL_BORDER_BRIGHT : COL_BORDER);
-        g.centeredText(this.minecraft.font, Component.literal(this.open ? "<" : "RT"),
-                this.tabRect.x + this.tabRect.w / 2, this.tabRect.y + 5, this.open ? COL_TEXT_DIM : COL_TEXT_AE);
+        VanillaUi.button(g, this.tabRect.x, this.tabRect.y, this.tabRect.w, this.tabRect.h,
+                hover || this.open, true);
+        Component label = this.open ? Component.literal("<") : Component.translatable("gui.routinebags.mount.tab");
+        g.centeredText(this.minecraft.font, label, this.tabRect.x + this.tabRect.w / 2,
+                this.tabRect.y + 5, VanillaUi.buttonText(hover || this.open, true));
         if (!this.statusBadgeText().isEmpty()) {
-            g.fill(this.tabRect.x + this.tabRect.w - 5, this.tabRect.y + 2, this.tabRect.x + this.tabRect.w - 2, this.tabRect.y + 5, 0xFFE0C060);
+            g.fill(this.tabRect.x + this.tabRect.w - 5, this.tabRect.y + 2,
+                    this.tabRect.x + this.tabRect.w - 2, this.tabRect.y + 5, VanillaUi.STATUS);
         }
         if (hover) {
             g.setComponentTooltipForNextFrame(this.minecraft.font, List.of(Component.translatable(this.open
@@ -247,15 +266,14 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
     }
 
     private String statusBadgeText() {
-        return (this.runner.busy() || this.sorter.isActive() || this.waitingServerSort) ? "!" : "";
+        return (this.runner.busy() || this.sorter.isActive() || this.waitingServerSort || this.pendingTakeRequest >= 0) ? "!" : "";
     }
 
     private void drawCloseButton(GuiGraphicsExtractor g, int mouseX, int mouseY) {
         boolean hover = this.closeBtn.contains(mouseX, mouseY);
-        g.fill(this.closeBtn.x, this.closeBtn.y, this.closeBtn.x + this.closeBtn.w, this.closeBtn.y + this.closeBtn.h,
-                hover ? COL_BTN_HOVER : COL_BTN);
-        g.outline(this.closeBtn.x, this.closeBtn.y, this.closeBtn.w, this.closeBtn.h, hover ? COL_BORDER_BRIGHT : COL_BORDER);
-        g.centeredText(this.minecraft.font, Component.literal("x"), this.closeBtn.x + this.closeBtn.w / 2, this.closeBtn.y + 2, COL_TEXT_AE);
+        VanillaUi.button(g, this.closeBtn.x, this.closeBtn.y, this.closeBtn.w, this.closeBtn.h, hover, true);
+        g.centeredText(this.minecraft.font, Component.literal("x"), this.closeBtn.x + this.closeBtn.w / 2,
+                this.closeBtn.y + 2, VanillaUi.buttonText(hover, true));
         if (hover) {
             g.setComponentTooltipForNextFrame(this.minecraft.font, List.of(Component.translatable("gui.routinebags.mount.tooltip_collapse")), mouseX, mouseY);
         }
@@ -271,17 +289,17 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
         }
         if (!InvOps.hasReachablePlayerInventory()) {
             g.centeredText(this.minecraft.font, Component.translatable("gui.routinebags.mount.unavailable"),
-                    this.gridRect.x + GRID_W / 2, this.gridRect.y + this.gridH / 2 - 4, COL_TEXT_DIM);
+                    this.gridRect.x + GRID_W / 2, this.gridRect.y + this.gridH / 2 - 4, VanillaUi.TEXT_DIM);
             return;
         }
         if (this.bags.isEmpty()) {
             g.centeredText(this.minecraft.font, Component.translatable("gui.routinebags.no_bags"),
-                    this.gridRect.x + GRID_W / 2, this.gridRect.y + this.gridH / 2 - 4, COL_TEXT_DIM);
+                    this.gridRect.x + GRID_W / 2, this.gridRect.y + this.gridH / 2 - 4, VanillaUi.TEXT_DIM);
             return;
         }
         if (this.visible.isEmpty()) {
             g.centeredText(this.minecraft.font, Component.translatable("gui.routinebags.no_items"),
-                    this.gridRect.x + GRID_W / 2, this.gridRect.y + this.gridH / 2 - 4, COL_TEXT_DIM);
+                    this.gridRect.x + GRID_W / 2, this.gridRect.y + this.gridH / 2 - 4, VanillaUi.TEXT_DIM);
         }
         Entry hovered = null;
         for (int i = 0; i < this.gridRows * GRID_COLS; i++) {
@@ -295,21 +313,19 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
             g.item(entry.display, x + 1, y + 1);
             g.itemDecorations(this.minecraft.font, entry.display, x + 1, y + 1, AggregatedIndex.formatCount(entry.total));
             if (!entry.anyMutable) {
-                g.fill(x + CELL - 5, y + 1, x + CELL - 2, y + 4, 0xFFCC5555);
+                g.fill(x + CELL - 5, y + 1, x + CELL - 2, y + 4, VanillaUi.DANGER);
             }
-            if (mouseX >= x && mouseX < x + CELL - 1 && mouseY >= y && mouseY < y + CELL - 1) {
-                g.fill(x, y, x + CELL - 1, y + CELL - 1, COL_CELL_HOVER);
-                g.outline(x, y, CELL - 1, CELL - 1, COL_BORDER_BRIGHT);
+            if (mouseX >= x && mouseX < x + CELL && mouseY >= y && mouseY < y + CELL) {
+                VanillaUi.slotHover(g, x, y, CELL);
                 hovered = entry;
             }
         }
         int totalRows = Math.max(1, (this.visible.size() + GRID_COLS - 1) / GRID_COLS);
         if (totalRows > this.gridRows) {
             int trackX = this.gridRect.x + GRID_W + 1;
-            g.fill(trackX, this.gridRect.y, trackX + 3, this.gridRect.y + this.gridH, COL_BAR_BG);
             int thumbH = Math.max(8, this.gridH * this.gridRows / totalRows);
             int thumbY = this.gridRect.y + (this.gridH - thumbH) * this.scrollRow / Math.max(1, totalRows - this.gridRows);
-            g.fill(trackX, thumbY, trackX + 3, thumbY + thumbH, COL_BORDER);
+            VanillaUi.scrollbar(g, trackX, this.gridRect.y, this.gridH, thumbY, thumbH);
         }
         if (hovered != null) {
             g.setTooltipForNextFrame(this.minecraft.font, entryTooltip(hovered), hovered.display.getTooltipImage(),
@@ -345,17 +361,22 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
     private void drawButtons(GuiGraphicsExtractor g, int mouseX, int mouseY) {
         boolean canOperate = InvOps.hasReachablePlayerInventory();
         drawButton(g, this.sortBtn, Component.translatable("gui.routinebags.sort"), mouseX, mouseY,
-                canOperate && !this.sorter.isActive() && !this.waitingServerSort);
+                canOperate && !this.sorter.isActive() && !this.runner.busy() && !this.waitingServerSort
+                        && this.pendingTakeRequest < 0 && !RecipeBagSupport.isBusy()
+                        && !ServerBridge.hasOperationInFlight());
         drawButton(g, this.cancelBtn, Component.translatable("gui.routinebags.cancel"), mouseX, mouseY,
-                this.sorter.isActive() || this.runner.busy() || this.waitingServerSort);
+                this.sorter.isActive() || this.runner.busy() || this.waitingServerSort || this.pendingTakeRequest >= 0);
         drawButton(g, this.modeBtn, compactModeLabel(), mouseX, mouseY, true);
         boolean openHover = this.openBtn.contains(mouseX, mouseY);
-        g.fill(this.openBtn.x, this.openBtn.y, this.openBtn.x + this.openBtn.w, this.openBtn.y + this.openBtn.h, openHover ? COL_BTN_HOVER : COL_BTN);
-        g.outline(this.openBtn.x, this.openBtn.y, this.openBtn.w, this.openBtn.h, openHover ? COL_BORDER_BRIGHT : COL_BORDER);
+        boolean canOpenFull = !hasActiveOperation() && !RecipeBagSupport.isBusy()
+                && !ServerBridge.hasOperationInFlight();
+        VanillaUi.button(g, this.openBtn.x, this.openBtn.y, this.openBtn.w, this.openBtn.h,
+                openHover && canOpenFull, canOpenFull);
         g.centeredText(this.minecraft.font, Component.translatable("gui.routinebags.mount.open_full"),
-                this.openBtn.x + this.openBtn.w / 2, this.openBtn.y + 2, COL_TEXT_DIM);
+                this.openBtn.x + this.openBtn.w / 2, this.openBtn.y + 2,
+                VanillaUi.buttonText(openHover && canOpenFull, canOpenFull));
         if (this.sortBtn.contains(mouseX, mouseY)) {
-            g.setComponentTooltipForNextFrame(this.minecraft.font, List.of(Component.translatable(ServerBridge.canSortOnServer()
+            g.setComponentTooltipForNextFrame(this.minecraft.font, List.of(Component.translatable(canUseServerSort()
                     ? "gui.routinebags.tooltip.sort_server"
                     : "gui.routinebags.tooltip.sort_client")), mouseX, mouseY);
         } else if (this.cancelBtn.contains(mouseX, mouseY)) {
@@ -378,9 +399,9 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
 
     private void drawButton(GuiGraphicsExtractor g, Rect r, Component label, int mouseX, int mouseY, boolean enabled) {
         boolean hover = enabled && r.contains(mouseX, mouseY);
-        g.fill(r.x, r.y, r.x + r.w, r.y + r.h, hover ? COL_BTN_HOVER : COL_BTN);
-        g.outline(r.x, r.y, r.w, r.h, hover ? COL_BORDER_BRIGHT : COL_BORDER);
-        g.centeredText(this.minecraft.font, label, r.x + r.w / 2, r.y + (r.h - 8) / 2, enabled ? COL_TEXT_AE : 0xFF607080);
+        VanillaUi.button(g, r.x, r.y, r.w, r.h, hover, enabled);
+        g.centeredText(this.minecraft.font, label, r.x + r.w / 2, r.y + (r.h - 8) / 2,
+                VanillaUi.buttonText(hover, enabled));
     }
 
     private void drawStatus(GuiGraphicsExtractor g) {
@@ -389,25 +410,27 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
         if (text == null) {
             text = Component.translatable("gui.routinebags.mount.summary", this.visible.size(), this.bags.size());
         }
-        g.text(this.minecraft.font, text, this.x + PAD, y, this.status == null ? COL_TEXT_DIM : 0xFFE0C060);
+        Component visibleText = text;
+        if (this.minecraft.font.width(text) > GRID_W) {
+            String suffix = "...";
+            visibleText = Component.literal(this.minecraft.font.plainSubstrByWidth(text.getString(),
+                    GRID_W - this.minecraft.font.width(suffix)) + suffix);
+        }
+        g.text(this.minecraft.font, visibleText, this.x + PAD, y,
+                this.status == null ? VanillaUi.TEXT_DIM : VanillaUi.STATUS);
     }
 
     private void drawSection(GuiGraphicsExtractor g, int x, int y, int w, int h, Component title) {
-        g.fill(x, y, x + w, y + h, COL_PANEL_INNER);
-        g.outline(x, y, w, h, COL_BORDER);
-        g.fill(x + 1, y + 1, x + w - 1, y + 10, COL_PANEL_HEADER);
-        g.text(this.minecraft.font, title, x + 4, y + 1, COL_TEXT_AE);
+        g.text(this.minecraft.font, title, x + 4, y + 1, VanillaUi.TEXT);
     }
 
     private void drawCell(GuiGraphicsExtractor g, int x, int y) {
-        g.fill(x, y, x + CELL - 1, y + CELL - 1, COL_CELL);
-        g.fill(x + 1, y + 1, x + CELL - 2, y + CELL - 2, COL_CELL_INSET);
-        g.outline(x, y, CELL - 1, CELL - 1, COL_BAR_GRID);
+        VanillaUi.slot(g, x, y, CELL);
     }
 
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
-        if (this.suppressed) {
+        if (this.suppressed || !this.layoutAvailable) {
             return false;
         }
         double mx = event.x();
@@ -431,6 +454,9 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
             return true;
         }
         if (this.openBtn.contains(mx, my)) {
+            if (busyBlocked()) {
+                return true;
+            }
             this.minecraft.setScreen(new UnifiedBagScreen(this.minecraft.screen));
             return true;
         }
@@ -440,8 +466,11 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
         }
         if (this.cancelBtn.contains(mx, my)) {
             this.sorter.cancel();
-            this.runner.clear();
+            this.runner.cancelSafely(Component.translatable("gui.routinebags.status.operation_cancelled"));
             this.waitingServerSort = false;
+            ServerBridge.cancelTakeRequest(this.pendingTakeRequest);
+            this.pendingTakeRequest = -1;
+            this.pendingTakeTicks = 0;
             return true;
         }
         if (this.modeBtn.contains(mx, my)) {
@@ -489,10 +518,11 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
             this.status = Component.translatable("gui.routinebags.status.cursor_busy");
             return;
         }
-        if (this.sorter.isActive() || this.runner.busy() || this.waitingServerSort) {
+        if (this.sorter.isActive() || this.runner.busy() || this.waitingServerSort || this.pendingTakeRequest >= 0
+                || RecipeBagSupport.isBusy() || ServerBridge.hasOperationInFlight()) {
             return;
         }
-        if (ServerBridge.canSortOnServer()) {
+        if (canUseServerSort()) {
             this.waitingServerSort = true;
             this.status = Component.translatable("gui.routinebags.status.server_sorting");
             ServerBridge.requestSort(this.sortMode);
@@ -536,6 +566,22 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
             return;
         }
         this.status = null;
+        if (ServerBridge.canTakeOnServer()) {
+            int available = (int) Math.min(entry.total, entry.display.getMaxStackSize());
+            int requested = rightClick ? Math.max(1, available / 2) : available;
+            List<dev.lans.routinebags.network.RoutineBagsNetwork.TakeTarget> targets = TakePlanner.plan(entry.key,
+                    requested);
+            int destination = shift && !rightClick
+                    ? dev.lans.routinebags.network.RoutineBagsNetwork.TakeRequestPayload.DESTINATION_INVENTORY
+                    : dev.lans.routinebags.network.RoutineBagsNetwork.TakeRequestPayload.DESTINATION_CURSOR;
+            int requestId = ServerBridge.requestTake(destination, targets);
+            if (requestId >= 0) {
+                this.pendingTakeRequest = requestId;
+                this.pendingTakeTicks = 100;
+                this.status = Component.translatable("gui.routinebags.status.server_taking");
+                return;
+            }
+        }
         if (shift && !rightClick) {
             CursorOps.pickupToInventory(this.runner, entry.key);
             return;
@@ -584,16 +630,20 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
     }
 
     private boolean busyBlocked() {
-        if (this.runner.busy() || this.sorter.isActive() || this.waitingServerSort) {
+        if (hasActiveOperation() || RecipeBagSupport.isBusy() || ServerBridge.hasOperationInFlight()) {
             this.status = Component.translatable("gui.routinebags.status.busy");
             return true;
         }
         return false;
     }
 
+    private boolean canUseServerSort() {
+        return this.sortMode != SortMode.BY_CREATIVE && ServerBridge.canSortOnServer();
+    }
+
     @Override
     public boolean mouseScrolled(double x, double y, double scrollX, double scrollY) {
-        if (!this.open) {
+        if (!this.layoutAvailable || !this.open) {
             return false;
         }
         if (!this.gridRect.contains(x, y)) {
@@ -607,6 +657,9 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
 
     @Override
     public boolean keyPressed(KeyEvent event) {
+        if (!this.layoutAvailable) {
+            return false;
+        }
         if (Keybinds.OPEN_UNIFIED.get().matches(event)) {
             toggleOpen();
             return true;
@@ -620,6 +673,9 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
     }
 
     public void toggleOpen() {
+        if (!this.layoutAvailable) {
+            return;
+        }
         this.open = !this.open;
         openState = this.open;
         if (!this.open) {
@@ -635,6 +691,10 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
 
     public boolean isOpen() {
         return this.open;
+    }
+
+    public boolean isLayoutAvailable() {
+        return this.layoutAvailable;
     }
 
     public void setSuppressed(boolean suppressed) {
@@ -655,7 +715,7 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
 
     @Override
     public boolean isMouseOver(double mouseX, double mouseY) {
-        if (this.suppressed) {
+        if (this.suppressed || !this.layoutAvailable) {
             return false;
         }
         if (!this.open && this.tabRect.contains(mouseX, mouseY)) {

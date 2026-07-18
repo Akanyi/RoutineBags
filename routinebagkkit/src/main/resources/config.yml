@@ -1,6 +1,7 @@
 features:
   serverSort: true
   serverStore: true
+  serverTake: true
 
 limits:
   cooldownMillis: 750

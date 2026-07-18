@@ -6,11 +6,11 @@
 [![Release](https://img.shields.io/github/v/release/Akanyi/RoutineBags)](https://github.com/Akanyi/RoutineBags/releases/latest)
 [![License](https://img.shields.io/github/license/Akanyi/RoutineBags)](LICENSE)
 
-把散落在多个收纳袋里的物品，合并成一个可搜索、可整理、可直接存取的统一终端。
+把散落在多个收纳袋里的物品，合并成一个可搜索、可整理、可直接存取的统一界面。
 
 Routine Bags 是面向 Minecraft `26.1.2` 的客户端模组，同时提供 NeoForge 与 Fabric 版本。只安装客户端即可连接原版或第三方服务器使用；如果服务器安装可选的增强组件，还可以把整理和智能存入交给服务端完成。
 
-> Unified bundle storage terminal for Minecraft 26.1.2, available for NeoForge and Fabric. Client-only usage works on ordinary servers; optional server components provide faster, more reliable operations.
+> Unified bundle inventory for Minecraft 26.1.2, available for NeoForge and Fabric. Client-only usage works on ordinary servers; optional server components provide faster, more reliable operations.
 
 ## 下载
 
@@ -18,20 +18,21 @@ Routine Bags 是面向 Minecraft `26.1.2` 的客户端模组，同时提供 NeoF
 
 | 文件 | 用途 | 运行位置 |
 |---|---|---|
-| `routinebags-0.2.0.jar` | NeoForge 模组 | NeoForge 客户端；也可选装到 NeoForge 服务端 |
-| `routinebags-fabric-0.2.0.jar` | Fabric 模组 | Fabric 客户端，需要 Fabric API |
-| `routinebagkkit-0.2.0.jar` | RoutineBagkkit 插件 | Paper `26.1.2` 服务端，可选 |
+| `routinebags-0.3.0.jar` | NeoForge 模组 | NeoForge 客户端；也可选装到 NeoForge 服务端 |
+| `routinebags-fabric-0.3.0.jar` | Fabric 模组 | Fabric 客户端，需要 Fabric API |
+| `routinebagkkit-0.3.0.jar` | RoutineBagkkit 插件 | Paper `26.1.2` 服务端，可选 |
 
 ## 主要功能
 
-- **统一收纳终端**：按 `B` 打开，将玩家背包和副手中的所有收纳袋聚合到一个界面。
+- **统一收纳界面**：按 `B` 打开，将玩家背包和副手中的所有收纳袋聚合到一个原版风格界面。
 - **跨袋聚合计数**：同种物品只显示一个条目，并展示它在各个袋子中的来源和总数。
 - **搜索与筛选**：按物品显示名称或注册名搜索，也可以只查看某一个袋子的内容。
-- **跨袋取出**：左键拿一组、右键拿半组、`Shift + 左键` 直接放进玩家背包；数量不足时会自动从多个袋子凑齐。
+- **跨袋取出**：左键拿一组、右键拿半组、`Shift + 左键` 直接放进玩家背包；数量不足时会自动从多个袋子凑齐，兼容服务端可直接精确拿取。
 - **跨袋存入**：光标持物点击聚合网格即可自动分配到多个有剩余容量的袋子。
 - **智能整理**：合并同类物品并压缩袋子空间，支持创造模式顺序、注册名、名称和数量四种排序方式。
 - **容量可视化**：显示每个收纳袋的原版重量占用，以及所有可写袋子的总容量。
 - **容器界面挂载**：打开箱子、工作台等容器时，可在侧边展开轻量 RTbags 面板；不会移动或改写原容器布局。
+- **配方补料**：合成台和玩家 `2×2` 配方书会把收纳袋中的普通配方材料计入“可合成”，点击后先补齐缺料再调用原版放置配方；增强服务器上的 `Shift + 点击` 会按原版堆叠上限补齐最大可放置数量。NeoForge 客户端安装 Routine JEI Recipe 时，JEI 的 `+` 按钮也复用同一条安全补料链路。
 - **只读容器浏览**：可选展示潜影盒等带 `minecraft:container` 组件的物品内容。
 - **中英文界面**：内置简体中文和英文翻译。
 
@@ -58,32 +59,32 @@ Routine Bags 通过原版数据组件识别收纳物品，而不是维护物品 
 ### NeoForge 客户端
 
 1. 安装 Minecraft `26.1.2` 对应的 NeoForge。
-2. 下载 `routinebags-0.2.0.jar`。
+2. 下载 `routinebags-0.3.0.jar`。
 3. 将 jar 放入客户端的 `mods` 文件夹。
 
 ### Fabric 客户端
 
 1. 安装 Fabric Loader `0.19.3` 和适用于 Minecraft `26.1.2` 的 Fabric API。
-2. 下载 `routinebags-fabric-0.2.0.jar`。
+2. 下载 `routinebags-fabric-0.3.0.jar`。
 3. 将 Routine Bags 和 Fabric API 一起放入客户端的 `mods` 文件夹。
 
 ### 可选服务端增强
 
 普通服务器不需要安装任何东西。需要服务端增强时，可以选择：
 
-- **NeoForge 服务端**：安装同一个 `routinebags-0.2.0.jar`，提供服务端整理。
-- **Paper 服务端**：安装 `routinebagkkit-0.2.0.jar`，提供服务端整理和跨袋智能存入。
+- **NeoForge 服务端**：安装同一个 `routinebags-0.3.0.jar`，提供服务端整理、智能存入和精确拿取。
+- **Paper 服务端**：安装 `routinebagkkit-0.3.0.jar`，提供服务端整理、跨袋智能存入和精确拿取。
 
 Fabric 专用服务端组件目前尚未提供；Fabric 客户端仍可使用完整的客户端脚本模式。
 
 ## 快速上手
 
-1. 默认按 `B` 打开完整统一终端。
+1. 默认按 `B` 打开完整收纳袋界面。
 2. 在 `选项 -> 控制 -> 按键绑定 -> 收纳袋管理` 中可以修改快捷键。
-3. 打开箱子或工作台时，点击侧边的 `RT` 标签展开挂载面板；再次按绑定快捷键也可以切换。
+3. 打开箱子或工作台时，点击侧边的 `袋` 标签展开收纳袋面板；再次按绑定快捷键也可以切换。
 4. 配方书展开时，挂载面板会暂时隐藏，关闭配方书后自动恢复。
 
-### 聚合终端操作
+### 聚合界面操作
 
 | 区域 | 操作 | 效果 |
 |---|---|---|
@@ -113,10 +114,12 @@ Fabric 专用服务端组件目前尚未提供；Fabric 客户端仍可使用完
 
 客户端收到兼容服务端的能力声明后，会自动启用可用功能：
 
-- NeoForge 服务端模组：服务端整理。
-- RoutineBagkkit：服务端整理和服务端智能存入。
+- NeoForge 服务端模组：服务端整理、智能存入和精确拿取。
+- RoutineBagkkit：服务端整理、智能存入和精确拿取。
 
-界面右下角会显示当前模式和能力提供者。服务端可分别关闭整理或存入能力，客户端会自动回退到本地脚本。
+界面右下角会显示当前模式和能力提供者。RoutineBagkkit 可分别关闭整理、存入或拿取能力，客户端会自动回退到本地脚本。
+
+服务端智能存入使用带请求 ID 的幂等协议。失败或超时后会延迟重试，首次请求之外最多再尝试两次；服务端按玩家缓存最近 32 笔成功请求，同一 ID 和相同请求内容的重发不会重复扣取物品。
 
 ## 已知边界
 
@@ -125,6 +128,7 @@ Fabric 专用服务端组件目前尚未提供；Fabric 客户端仍可使用完
 - **不可堆叠物品不可拆分容量**：工具、钓竿等通常单个占满 64 个收纳袋单位；两个各剩 32 单位的袋子仍放不下一件工具。
 - **自动存入不会处理收纳袋本身**：原版允许袋套袋，但自动操作容易产生反直觉结果。Routine Bags 会拦截这条路径；需要嵌套时请使用原版槽位操作手动完成。
 - **挂载面板只操作当前菜单可访问的玩家槽位**：某些特殊容器界面无法访问副手时，副手袋子不会出现在挂载面板中，但完整终端仍可使用。
+- **配方补料范围**：仅接管普通 crafting 配方。自定义组件敏感 Ingredient、非空合成网格和无法安全放入玩家背包的材料会保持原版行为；普通服务器回退到节流点击并至少补齐一份材料，增强服务器可精确提取缺口，`Shift + 点击` 时会尝试补齐最大可放置数量。JEI 联动是可选的，两个模组均可独立安装。
 
 ## 客户端配置
 
@@ -151,6 +155,7 @@ Paper 插件配置位于 `plugins/RoutineBagkkit/config.yml`：
 features:
   serverSort: true
   serverStore: true
+  serverTake: true
 
 limits:
   cooldownMillis: 750
@@ -163,6 +168,7 @@ limits:
 - `routinebagkkit.use`
 - `routinebagkkit.sort`
 - `routinebagkkit.store`
+- `routinebagkkit.take`
 
 ## 兼容协议
 
@@ -173,10 +179,14 @@ limits:
 | `routinebags:hello` | 服务端 -> 客户端 | `provider`、`serverSort`、`serverStore` |
 | `routinebags:sort_request` | 客户端 -> 服务端 | 排序模式序号 |
 | `routinebags:sort_result` | 服务端 -> 客户端 | `success`、`moves`、`messageKey` |
-| `routinebags:store_request` | 客户端 -> 服务端 | 来源 InventoryMenu 槽位 |
-| `routinebags:store_result` | 服务端 -> 客户端 | `success`、`moved`、`messageKey` |
+| `routinebags:store_request_v3` | 客户端 -> 服务端 | `requestId`、当前 `containerId`、来源槽位、来源数量、32 字节物品身份摘要 |
+| `routinebags:store_result_v3` | 服务端 -> 客户端 | `requestId`、`success`、`moved`、`messageKey` |
+| `routinebags:take_request_v3` | 客户端 -> 服务端 | `requestId`、当前 `containerId`、目标位置、条目列表（袋槽位、实时条目索引、数量、32 字节物品身份摘要） |
+| `routinebags:take_result_v3` | 服务端 -> 客户端 | `requestId`、`success`、`moved`、`messageKey` |
 
-所有整数使用 Minecraft VarInt，字符串使用 VarInt 长度前缀的 UTF-8 编码。
+所有整数使用 Minecraft VarInt，字符串使用 VarInt 长度前缀的 UTF-8 编码。物品身份摘要是原版 `ItemStack.CODEC` 压缩 NBT（数量固定为 1，包含当前 `DataVersion`）的 SHA-256，直接按 32 字节传输。
+
+`store_request_v3` 与 `take_request_v3` 都要求同一玩家的成功 `requestId` 幂等。官方实现缓存每名玩家最近 32 笔成功请求，并拒绝同一 ID 携带不同请求内容的重放。存入协议会校验当前菜单会话、来源数量和完整物品身份；拿取协议会校验当前菜单会话、实时条目索引和完整物品身份，避免迟到请求操作已经变化的槽位。服务端不需要解析客户端提供的任意 NBT。旧服务端没有对应 v3 通道时，客户端会安全回退到原版点击模式。
 
 ## 从源码构建
 

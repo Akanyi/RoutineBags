@@ -16,7 +16,7 @@ import net.minecraft.world.item.component.BundleContents;
 import org.jspecify.annotations.Nullable;
 
 /**
- * AE 终端式的光标交互：点聚合条目直接拿到鼠标上，数量不足一组时跨袋自动凑。
+ * 聚合光标交互：点聚合条目直接拿到鼠标上，数量不足一组时跨袋自动凑。
  *
  * 凑组分两级：先把物品聚合到“可达数量最大”的袋子（可达 = 现有 + 还塞得进的量，
  * 光看现有数量会选中被杂物卡死容量的袋子，凑出 59/64 这种半吊子）；
@@ -110,7 +110,10 @@ public final class CursorOps {
                 int idx = liveEntryIdx(bagSlot, key);
                 return idx >= 0 && InvOps.selectBundleEntry(bagSlot, idx);
             });
-            r.enqueue(() -> liveEntryIdx(bagSlot, key) >= 0 && InvOps.rightClick(bagSlot));
+            r.enqueue(() -> {
+                int idx = liveEntryIdx(bagSlot, key);
+                return idx >= 0 && InvOps.selectBundleEntry(bagSlot, idx) && InvOps.rightClick(bagSlot);
+            });
             r.enqueue(Moves.waitUntil(r, () -> key.matches(InvOps.carried()), MAX_ROUNDS));
             r.enqueue(afterExtract(r, key, half, staging, gather, rounds - 1, finishToInventory));
             return true;

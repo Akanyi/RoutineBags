@@ -60,21 +60,6 @@ public final class UnifiedBagScreen extends Screen {
     private static final int MIN_GRID_ROWS = 3;
     private static final int MAX_GRID_ROWS = 10;
 
-    private static final int COL_PANEL = 0xF0060D16;
-    private static final int COL_PANEL_INNER = 0xE90B1522;
-    private static final int COL_PANEL_HEADER = 0xF20D2032;
-    private static final int COL_BORDER = 0xFF244A63;
-    private static final int COL_BORDER_BRIGHT = 0xFF3E8CB0;
-    private static final int COL_CELL = 0xFF101A26;
-    private static final int COL_CELL_INSET = 0xFF07101A;
-    private static final int COL_CELL_HOVER = 0x663FAFD6;
-    private static final int COL_TEXT_DIM = 0xFF8BA8B8;
-    private static final int COL_TEXT_AE = 0xFF77D8F0;
-    private static final int COL_BTN = 0xFF12283A;
-    private static final int COL_BTN_HOVER = 0xFF1B3F57;
-    private static final int COL_BAR_BG = 0xFF071018;
-    private static final int COL_BAR_GRID = 0x663E8CB0;
-
     private record Rect(int x, int y, int w, int h) {
         boolean contains(double mx, double my) {
             return mx >= this.x && mx < this.x + this.w && my >= this.y && my < this.y + this.h;
@@ -98,6 +83,9 @@ public final class UnifiedBagScreen extends Screen {
     private @Nullable Component status;
     private boolean sorterWasActive;
     private boolean waitingServerSort;
+    private int pendingTakeRequest = -1;
+    private int pendingTakeTicks;
+    private boolean closeWhenRunnerStops;
 
     private int left;
     private int top;
@@ -140,7 +128,7 @@ public final class UnifiedBagScreen extends Screen {
         int gridY = this.top + GRID_TOP;
         this.gridRect = new Rect(gridX, gridY, GRID_W, this.gridH);
         this.sidebarRect = new Rect(gridX + GRID_W + 6, gridY, SIDEBAR_W, this.gridH);
-        this.sidebarVisibleRows = Math.max(1, (this.gridH - 14) / SIDEBAR_ROW_H);
+        this.sidebarVisibleRows = Math.max(1, (this.gridH - 24) / SIDEBAR_ROW_H);
 
         int btnY = gridY + this.gridH + 4;
         this.sortBtn = new Rect(gridX, btnY, 56, BTN_H);
@@ -178,11 +166,24 @@ public final class UnifiedBagScreen extends Screen {
             this.waitingServerSort = false;
             this.status = Component.translatable(serverSortResult.messageKey(), serverSortResult.moves());
         }
-        var serverStoreResult = ServerBridge.takeStoreResult();
-        if (serverStoreResult != null) {
+        var serverStoreResultV3 = ServerBridge.takeStoreResultV3();
+        if (serverStoreResultV3 != null) {
             this.waitingServerSort = false;
-            this.status = Component.translatable(serverStoreResult.messageKey(), serverStoreResult.moved());
+            this.status = Component.translatable(serverStoreResultV3.messageKey(), serverStoreResultV3.moved());
             refresh();
+        }
+        if (this.pendingTakeRequest >= 0) {
+            var serverTakeResult = ServerBridge.takeTakeResult(this.pendingTakeRequest);
+            if (serverTakeResult != null) {
+                this.pendingTakeRequest = -1;
+                this.pendingTakeTicks = 0;
+                this.status = Component.translatable(serverTakeResult.messageKey(), serverTakeResult.moved());
+                refresh();
+            } else if (--this.pendingTakeTicks <= 0) {
+                ServerBridge.cancelTakeRequest(this.pendingTakeRequest);
+                this.pendingTakeRequest = -1;
+                this.status = Component.translatable("gui.routinebags.status.server_take_failed");
+            }
         }
 
         Component abortMsg = this.runner.takeAbortMessage();
@@ -190,14 +191,24 @@ public final class UnifiedBagScreen extends Screen {
             this.status = abortMsg;
             this.sorter.cancel();
             this.waitingServerSort = false;
+            ServerBridge.cancelStoreRequest();
+            ServerBridge.cancelTakeRequest(this.pendingTakeRequest);
+            this.pendingTakeRequest = -1;
+            this.pendingTakeTicks = 0;
         } else if (this.sorter.isActive()) {
             this.status = this.sorter.status();
         } else if (this.waitingServerSort) {
-            this.status = Component.translatable("gui.routinebags.status.server_sorting");
+            if (this.status == null) {
+                this.status = Component.translatable("gui.routinebags.status.server_sorting");
+            }
         } else if (this.sorterWasActive) {
             this.status = this.sorter.status();
         }
         this.sorterWasActive = this.sorter.isActive();
+        if (this.closeWhenRunnerStops && !this.runner.busy()) {
+            this.closeWhenRunnerStops = false;
+            closeImmediately();
+        }
     }
 
     private void refresh() {
@@ -228,11 +239,8 @@ public final class UnifiedBagScreen extends Screen {
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float a) {
-        g.fill(this.left, this.top, this.left + IMG_W, this.top + this.imgH, COL_PANEL);
-        g.fill(this.left + 1, this.top + 1, this.left + IMG_W - 1, this.top + 20, COL_PANEL_HEADER);
-        g.outline(this.left, this.top, IMG_W, this.imgH, COL_BORDER_BRIGHT);
-        g.outline(this.left + 2, this.top + 2, IMG_W - 4, this.imgH - 4, COL_BORDER);
-        g.text(this.font, this.title, this.left + PAD, this.top + 7, COL_TEXT_AE);
+        VanillaUi.panel(g, this.left, this.top, IMG_W, this.imgH);
+        g.text(this.font, this.title, this.left + PAD, this.top + 7, VanillaUi.TEXT);
 
         g.nextStratum();
         super.extractRenderState(g, mouseX, mouseY, a);
@@ -256,13 +264,14 @@ public final class UnifiedBagScreen extends Screen {
         int x = this.left + PAD + this.font.width(this.title) + 8;
         int maxW = Math.max(0, this.searchBox.getX() - x - 6);
         if (maxW > 20 && this.font.width(stats) <= maxW) {
-            g.text(this.font, stats, x, this.top + 7, COL_TEXT_DIM);
+            g.text(this.font, stats, x, this.top + 7, VanillaUi.TEXT_DIM);
         }
         if (!this.query.isEmpty()) {
             boolean hover = this.searchClearBtn.contains(mouseX, mouseY);
-            g.fill(this.searchClearBtn.x, this.searchClearBtn.y, this.searchClearBtn.x + this.searchClearBtn.w,
-                    this.searchClearBtn.y + this.searchClearBtn.h, hover ? COL_BTN_HOVER : COL_BTN);
-            g.centeredText(this.font, Component.literal("x"), this.searchClearBtn.x + 6, this.searchClearBtn.y + 2, 0xFFE0E0E0);
+            VanillaUi.button(g, this.searchClearBtn.x, this.searchClearBtn.y, this.searchClearBtn.w,
+                    this.searchClearBtn.h, hover, true);
+            g.centeredText(this.font, Component.literal("x"), this.searchClearBtn.x + 6,
+                    this.searchClearBtn.y + 2, VanillaUi.buttonText(hover, true));
             if (hover) {
                 g.setComponentTooltipForNextFrame(this.font, List.of(Component.translatable("gui.routinebags.clear_search")), mouseX, mouseY);
             }
@@ -281,14 +290,15 @@ public final class UnifiedBagScreen extends Screen {
         }
         if (this.bags.isEmpty()) {
             g.centeredText(this.font, Component.translatable("gui.routinebags.no_bags"),
-                    this.gridRect.x + GRID_W / 2, this.gridRect.y + this.gridH / 2 - 4, COL_TEXT_DIM);
+                    this.gridRect.x + GRID_W / 2, this.gridRect.y + this.gridH / 2 - 4, VanillaUi.TEXT_DIM);
             return;
         }
         if (this.visible.isEmpty()) {
             Component empty = this.query.isEmpty()
                     ? Component.translatable("gui.routinebags.no_items")
                     : Component.translatable("gui.routinebags.no_search_results", this.query);
-            g.centeredText(this.font, empty, this.gridRect.x + GRID_W / 2, this.gridRect.y + this.gridH / 2 - 4, COL_TEXT_DIM);
+            g.centeredText(this.font, empty, this.gridRect.x + GRID_W / 2,
+                    this.gridRect.y + this.gridH / 2 - 4, VanillaUi.TEXT_DIM);
         }
         Entry hovered = null;
         for (int i = 0; i < this.gridRows * GRID_COLS; i++) {
@@ -302,21 +312,19 @@ public final class UnifiedBagScreen extends Screen {
             g.item(entry.display, x + 1, y + 1);
             g.itemDecorations(this.font, entry.display, x + 1, y + 1, AggregatedIndex.formatCount(entry.total));
             if (!entry.anyMutable) {
-                g.fill(x + CELL - 5, y + 1, x + CELL - 2, y + 4, 0xFFCC5555);
+                g.fill(x + CELL - 5, y + 1, x + CELL - 2, y + 4, VanillaUi.DANGER);
             }
-            if (mouseX >= x && mouseX < x + CELL - 1 && mouseY >= y && mouseY < y + CELL - 1) {
-                g.fill(x, y, x + CELL - 1, y + CELL - 1, COL_CELL_HOVER);
-                g.outline(x, y, CELL - 1, CELL - 1, COL_BORDER_BRIGHT);
+            if (mouseX >= x && mouseX < x + CELL && mouseY >= y && mouseY < y + CELL) {
+                VanillaUi.slotHover(g, x, y, CELL);
                 hovered = entry;
             }
         }
         int totalRows = Math.max(1, (this.visible.size() + GRID_COLS - 1) / GRID_COLS);
         if (totalRows > this.gridRows) {
             int trackX = this.gridRect.x + GRID_W + 1;
-            g.fill(trackX, this.gridRect.y, trackX + 3, this.gridRect.y + this.gridH, COL_BAR_BG);
             int thumbH = Math.max(8, this.gridH * this.gridRows / totalRows);
             int thumbY = this.gridRect.y + (this.gridH - thumbH) * this.scrollRow / Math.max(1, totalRows - this.gridRows);
-            g.fill(trackX, thumbY, trackX + 3, thumbY + thumbH, COL_BORDER);
+            VanillaUi.scrollbar(g, trackX, this.gridRect.y, this.gridH, thumbY, thumbH);
         }
         if (hovered != null) {
             g.setTooltipForNextFrame(this.font, entryTooltip(hovered), hovered.display.getTooltipImage(),
@@ -359,17 +367,18 @@ public final class UnifiedBagScreen extends Screen {
             int x = this.sidebarRect.x;
             int y = this.sidebarRect.y + row * SIDEBAR_ROW_H;
             boolean hover = mouseX >= x && mouseX < x + SIDEBAR_W && mouseY >= y && mouseY < y + SIDEBAR_ROW_H - 2;
-            g.fill(x, y, x + SIDEBAR_W, y + SIDEBAR_ROW_H - 2, this.bagFilter == ordinal || hover ? COL_BTN_HOVER : COL_CELL);
-            g.outline(x, y, SIDEBAR_W, SIDEBAR_ROW_H - 2, this.bagFilter == ordinal ? COL_BORDER_BRIGHT : COL_BORDER);
+            boolean selected = this.bagFilter == ordinal;
+            VanillaUi.button(g, x, y, SIDEBAR_W, SIDEBAR_ROW_H - 2, selected || hover, true);
             g.item(bag.bagStack, x + 1, y + 1);
             String label = "#" + (ordinal + 1);
-            g.text(this.font, label, x + 20, y + 1, bag.mutable ? COL_TEXT_AE : 0xFFCC7777);
+            g.text(this.font, label, x + 20, y + 1,
+                    bag.mutable ? VanillaUi.buttonText(selected || hover, true) : 0xFFFF8080);
             int barX = x + 20 + this.font.width(label) + 3;
             int barW = SIDEBAR_W - (barX - x) - 4;
             float pct = bag.fillFraction();
-            g.fill(barX, y + 3, barX + barW, y + 7, COL_BAR_BG);
+            g.fill(barX, y + 3, barX + barW, y + 7, VanillaUi.SLOT_SHADOW);
             g.fill(barX, y + 3, barX + Math.round(barW * pct), y + 7, capacityColor(pct));
-            g.text(this.font, capacityText(bag), x + 20, y + 10, COL_TEXT_DIM);
+            g.text(this.font, capacityText(bag), x + 20, y + 10, 0xFFE0E0E0);
             if (hover) {
                 // 原版 bundle 预览组件白嫖：自带内容网格和选中高亮
                 g.setTooltipForNextFrame(this.font, bagTooltip(bag, ordinal),
@@ -380,7 +389,7 @@ public final class UnifiedBagScreen extends Screen {
             Component pageInfo = Component.translatable("gui.routinebags.bag_page",
                     this.bagScroll + 1, Math.min(this.bagScroll + shown, this.bags.size()), this.bags.size());
             g.text(this.font, pageInfo, this.sidebarRect.x + 2,
-                    this.sidebarRect.y + this.sidebarVisibleRows * SIDEBAR_ROW_H + 1, COL_TEXT_DIM);
+                    this.sidebarRect.y + this.sidebarVisibleRows * SIDEBAR_ROW_H + 1, VanillaUi.TEXT_DIM);
         }
         int usedUnits = 0;
         int totalUnits = 0;
@@ -392,7 +401,7 @@ public final class UnifiedBagScreen extends Screen {
         }
         if (totalUnits > 0) {
             g.text(this.font, Component.translatable("gui.routinebags.capacity_units", usedUnits, totalUnits),
-                    this.sidebarRect.x + 2, this.sidebarRect.y + this.gridH - 10, 0xFFCFCFDF);
+                    this.sidebarRect.x + 2, this.sidebarRect.y + this.gridH - 10, VanillaUi.TEXT);
         }
     }
 
@@ -437,11 +446,15 @@ public final class UnifiedBagScreen extends Screen {
     }
 
     private void drawButtons(GuiGraphicsExtractor g, int mouseX, int mouseY) {
-        drawButton(g, this.sortBtn, Component.translatable("gui.routinebags.sort"), mouseX, mouseY, !this.sorter.isActive() && !this.waitingServerSort);
-        drawButton(g, this.cancelBtn, Component.translatable("gui.routinebags.cancel"), mouseX, mouseY, this.sorter.isActive() || this.runner.busy() || this.waitingServerSort);
+        drawButton(g, this.sortBtn, Component.translatable("gui.routinebags.sort"), mouseX, mouseY,
+                !this.sorter.isActive() && !this.runner.busy() && !this.waitingServerSort
+                        && this.pendingTakeRequest < 0 && !RecipeBagSupport.isBusy()
+                        && !ServerBridge.hasOperationInFlight());
+        drawButton(g, this.cancelBtn, Component.translatable("gui.routinebags.cancel"), mouseX, mouseY,
+                this.sorter.isActive() || this.runner.busy() || this.waitingServerSort || this.pendingTakeRequest >= 0);
         drawButton(g, this.modeBtn, Component.translatable(this.sortMode.translationKey()), mouseX, mouseY, true);
         if (this.sortBtn.contains(mouseX, mouseY)) {
-            g.setComponentTooltipForNextFrame(this.font, List.of(Component.translatable(ServerBridge.canSortOnServer()
+            g.setComponentTooltipForNextFrame(this.font, List.of(Component.translatable(canUseServerSort()
                     ? "gui.routinebags.tooltip.sort_server"
                     : "gui.routinebags.tooltip.sort_client")), mouseX, mouseY);
         } else if (this.cancelBtn.contains(mouseX, mouseY)) {
@@ -453,9 +466,9 @@ public final class UnifiedBagScreen extends Screen {
 
     private void drawButton(GuiGraphicsExtractor g, Rect r, Component label, int mouseX, int mouseY, boolean enabled) {
         boolean hover = enabled && r.contains(mouseX, mouseY);
-        g.fill(r.x, r.y, r.x + r.w, r.y + r.h, hover ? COL_BTN_HOVER : COL_BTN);
-        g.outline(r.x, r.y, r.w, r.h, hover ? COL_BORDER_BRIGHT : COL_BORDER);
-        g.centeredText(this.font, label, r.x + r.w / 2, r.y + (r.h - 8) / 2, enabled ? COL_TEXT_AE : 0xFF607080);
+        VanillaUi.button(g, r.x, r.y, r.w, r.h, hover, enabled);
+        g.centeredText(this.font, label, r.x + r.w / 2, r.y + (r.h - 8) / 2,
+                VanillaUi.buttonText(hover, enabled));
     }
 
     private void drawPlayerInventory(GuiGraphicsExtractor g, int mouseX, int mouseY) {
@@ -494,35 +507,29 @@ public final class UnifiedBagScreen extends Screen {
             g.item(stack, x + 1, y + 1);
             g.itemDecorations(this.font, stack, x + 1, y + 1);
         }
-        if (mouseX >= x && mouseX < x + CELL - 1 && mouseY >= y && mouseY < y + CELL - 1) {
-            g.fill(x, y, x + CELL - 1, y + CELL - 1, COL_CELL_HOVER);
-            g.outline(x, y, CELL - 1, CELL - 1, COL_BORDER_BRIGHT);
+        if (mouseX >= x && mouseX < x + CELL && mouseY >= y && mouseY < y + CELL) {
+            VanillaUi.slotHover(g, x, y, CELL);
             return stack;
         }
         return hovered;
     }
 
     private void drawSection(GuiGraphicsExtractor g, int x, int y, int w, int h, Component title) {
-        g.fill(x, y, x + w, y + h, COL_PANEL_INNER);
-        g.outline(x, y, w, h, COL_BORDER);
-        g.fill(x + 1, y + 1, x + w - 1, y + 11, COL_PANEL_HEADER);
-        g.text(this.font, title, x + 4, y + 2, COL_TEXT_AE);
+        g.text(this.font, title, x + 4, y + 2, VanillaUi.TEXT);
     }
 
     private void drawCell(GuiGraphicsExtractor g, int x, int y) {
-        g.fill(x, y, x + CELL - 1, y + CELL - 1, COL_CELL);
-        g.fill(x + 1, y + 1, x + CELL - 2, y + CELL - 2, COL_CELL_INSET);
-        g.outline(x, y, CELL - 1, CELL - 1, COL_BAR_GRID);
+        VanillaUi.slot(g, x, y, CELL);
     }
 
     private void drawStatus(GuiGraphicsExtractor g) {
         int y = this.top + this.imgH - 12;
         if (this.status != null) {
-            g.text(this.font, this.status, this.left + PAD, y, 0xFFE0C060);
+            g.text(this.font, this.status, this.left + PAD, y, VanillaUi.STATUS);
         }
         if (this.bagFilter >= 0 && this.bagFilter < this.bags.size()) {
             Component filterNote = Component.translatable("gui.routinebags.filter_bag", "#" + (this.bagFilter + 1));
-            g.text(this.font, filterNote, this.left + IMG_W - PAD - this.font.width(filterNote), y, COL_TEXT_DIM);
+            g.text(this.font, filterNote, this.left + IMG_W - PAD - this.font.width(filterNote), y, VanillaUi.TEXT_DIM);
         }
     }
 
@@ -532,9 +539,7 @@ public final class UnifiedBagScreen extends Screen {
         int x = this.left + IMG_W - PAD - w;
         int y = this.top + this.imgH - 27;
         boolean hover = mouseX >= x && mouseX < x + w && mouseY >= y && mouseY < y + 12;
-        g.fill(x, y, x + w, y + 12, hover ? COL_BTN_HOVER : COL_BTN);
-        g.outline(x, y, w, 12, COL_BORDER);
-        g.text(this.font, label, x + 5, y + 2, 0xFFCFCFDF);
+        g.text(this.font, label, x + 5, y + 2, hover ? VanillaUi.STATUS : VanillaUi.TEXT_DIM);
         if (hover) {
             g.setComponentTooltipForNextFrame(this.font, List.of(ServerBridge.providerTooltip()), mouseX, mouseY);
         }
@@ -573,8 +578,10 @@ public final class UnifiedBagScreen extends Screen {
         if (this.sortBtn.contains(mx, my)) {
             if (!InvOps.carried().isEmpty()) {
                 this.status = Component.translatable("gui.routinebags.status.cursor_busy");
-            } else if (!this.sorter.isActive() && !this.runner.busy() && !this.waitingServerSort) {
-                if (ServerBridge.canSortOnServer()) {
+            } else if (!this.sorter.isActive() && !this.runner.busy() && !this.waitingServerSort
+                    && this.pendingTakeRequest < 0 && !RecipeBagSupport.isBusy()
+                    && !ServerBridge.hasOperationInFlight()) {
+                if (canUseServerSort()) {
                     this.waitingServerSort = true;
                     this.status = Component.translatable("gui.routinebags.status.server_sorting");
                     ServerBridge.requestSort(this.sortMode);
@@ -586,8 +593,12 @@ public final class UnifiedBagScreen extends Screen {
         }
         if (this.cancelBtn.contains(mx, my)) {
             this.sorter.cancel();
-            this.runner.clear();
+            this.runner.cancelSafely(Component.translatable("gui.routinebags.status.operation_cancelled"));
             this.waitingServerSort = false;
+            ServerBridge.cancelStoreRequest();
+            ServerBridge.cancelTakeRequest(this.pendingTakeRequest);
+            this.pendingTakeRequest = -1;
+            this.pendingTakeTicks = 0;
             return true;
         }
         if (this.modeBtn.contains(mx, my)) {
@@ -615,7 +626,7 @@ public final class UnifiedBagScreen extends Screen {
     }
 
     /**
-     * 聚合网格：AE 终端语义。
+     * 聚合网格：把多个收纳袋当成一个物品区操作。
      * 空光标：左键=拿一组到光标（跨袋自动凑齐）、右键=拿半组、Shift+左键=收进背包。
      * 光标持物：左键=跨袋全存、右键=只存一个。
      */
@@ -654,6 +665,22 @@ public final class UnifiedBagScreen extends Screen {
             return;
         }
         this.status = null;
+        if (ServerBridge.canTakeOnServer()) {
+            int available = (int) Math.min(entry.total, entry.display.getMaxStackSize());
+            int requested = rightClick ? Math.max(1, available / 2) : available;
+            List<dev.lans.routinebags.network.RoutineBagsNetwork.TakeTarget> targets = TakePlanner.plan(entry.key,
+                    requested);
+            int destination = shift && !rightClick
+                    ? dev.lans.routinebags.network.RoutineBagsNetwork.TakeRequestPayload.DESTINATION_INVENTORY
+                    : dev.lans.routinebags.network.RoutineBagsNetwork.TakeRequestPayload.DESTINATION_CURSOR;
+            int requestId = ServerBridge.requestTake(destination, targets);
+            if (requestId >= 0) {
+                this.pendingTakeRequest = requestId;
+                this.pendingTakeTicks = 100;
+                this.status = Component.translatable("gui.routinebags.status.server_taking");
+                return;
+            }
+        }
         if (shift && !rightClick) {
             CursorOps.pickupToInventory(this.runner, entry.key);
             return;
@@ -664,8 +691,10 @@ public final class UnifiedBagScreen extends Screen {
     /** 袋子行：原版语义。光标有物品左键=存入该袋；空光标右键=取出选中项到光标；空光标左键=筛选 */
     private void handleSidebarClick(double mx, double my, boolean rightClick) {
         int row = (int) ((my - this.sidebarRect.y) / SIDEBAR_ROW_H);
+        int rowOffset = (int) (my - this.sidebarRect.y) % SIDEBAR_ROW_H;
         int ordinal = this.bagScroll + row;
-        if (row < 0 || row >= this.sidebarVisibleRows || ordinal >= this.bags.size()) {
+        if (row < 0 || row >= this.sidebarVisibleRows || rowOffset >= SIDEBAR_ROW_H - 2
+                || ordinal >= this.bags.size()) {
             return;
         }
         BagView bag = this.bags.get(ordinal);
@@ -784,11 +813,16 @@ public final class UnifiedBagScreen extends Screen {
     }
 
     private boolean busyBlocked() {
-        if (this.runner.busy() || this.sorter.isActive() || this.waitingServerSort) {
+        if (this.runner.busy() || this.sorter.isActive() || this.waitingServerSort || this.pendingTakeRequest >= 0
+                || RecipeBagSupport.isBusy() || ServerBridge.hasOperationInFlight()) {
             this.status = Component.translatable("gui.routinebags.status.busy");
             return true;
         }
         return false;
+    }
+
+    private boolean canUseServerSort() {
+        return this.sortMode != SortMode.BY_CREATIVE && ServerBridge.canSortOnServer();
     }
 
     private int invMenuSlotAt(double mx, double my) {
@@ -879,6 +913,16 @@ public final class UnifiedBagScreen extends Screen {
 
     @Override
     public void onClose() {
+        if (this.runner.hasCancelCleanup()) {
+            this.sorter.cancel();
+            this.runner.cancelSafely(Component.translatable("gui.routinebags.status.operation_cancelled"));
+            this.closeWhenRunnerStops = true;
+            return;
+        }
+        closeImmediately();
+    }
+
+    private void closeImmediately() {
         if (this.parent != null && this.minecraft != null && this.minecraft.player != null
                 && this.parent instanceof net.minecraft.client.gui.screens.inventory.AbstractContainerScreen<?> containerScreen
                 && this.minecraft.player.containerMenu == containerScreen.getMenu()) {
@@ -893,6 +937,10 @@ public final class UnifiedBagScreen extends Screen {
         // 关屏即弃：脚本半途而废没关系，每一步都是独立合法点击，不存在半完成的坏状态
         this.runner.clear();
         this.sorter.cancel();
+        ServerBridge.cancelStoreRequest();
+        ServerBridge.cancelTakeRequest(this.pendingTakeRequest);
+        this.pendingTakeRequest = -1;
+        this.pendingTakeTicks = 0;
         super.removed();
     }
 

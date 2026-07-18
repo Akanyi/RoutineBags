@@ -11,15 +11,18 @@ import net.minecraft.client.gui.screens.inventory.CreativeModeInventoryScreen;
 import net.minecraft.client.gui.screens.recipebook.RecipeBookComponent;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.world.inventory.AbstractContainerMenu;
 
 public final class ContainerMounts {
     private static final Field RECIPE_BOOK = field(AbstractRecipeBookScreen.class, "recipeBookComponent");
+    private static MountedBagPanel activePanel;
 
     public static MountedBagPanel create(AbstractContainerScreen<?> screen) {
         if (!ClientConfig.MOUNT_IN_CONTAINER_SCREENS.get() || screen instanceof CreativeModeInventoryScreen) {
             return null;
         }
-        return new MountedBagPanel(screen.getMenu());
+        activePanel = new MountedBagPanel(screen.getMenu());
+        return activePanel;
     }
 
     public static void tick(AbstractContainerScreen<?> screen, MountedBagPanel panel) {
@@ -62,7 +65,8 @@ public final class ContainerMounts {
     }
 
     public static boolean keyPressed(AbstractContainerScreen<?> screen, MountedBagPanel panel, KeyEvent event) {
-        if (panel == null || recipeBookVisible(screen) || !Keybinds.OPEN_UNIFIED.get().matches(event)) {
+        if (panel == null || !panel.isLayoutAvailable() || recipeBookVisible(screen)
+                || !Keybinds.OPEN_UNIFIED.get().matches(event)) {
             return false;
         }
         panel.toggleOpen();
@@ -74,6 +78,13 @@ public final class ContainerMounts {
         if (panel != null) {
             panel.cleanup();
         }
+        if (activePanel == panel) {
+            activePanel = null;
+        }
+    }
+
+    public static boolean hasActiveOperation(AbstractContainerMenu menu) {
+        return activePanel != null && activePanel.isMountedTo(menu) && activePanel.hasActiveOperation();
     }
 
     private static void layout(AbstractContainerScreen<?> screen, MountedBagPanel panel) {

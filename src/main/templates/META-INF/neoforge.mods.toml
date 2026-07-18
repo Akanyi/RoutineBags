@@ -2,6 +2,9 @@ license="${mod_license}"
 issueTrackerURL="https://github.com/Akanyi/RoutineBags/issues"
 displayURL="https://github.com/Akanyi/RoutineBags"
 
+[[mixins]]
+config="routinebags.shared.client.mixins.json"
+
 [[mods]]
 modId="${mod_id}"
 version="${mod_version}"

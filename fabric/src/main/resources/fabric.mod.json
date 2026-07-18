@@ -22,6 +22,10 @@
     {
       "config": "routinebags.client.mixins.json",
       "environment": "client"
+    },
+    {
+      "config": "routinebags.shared.client.mixins.json",
+      "environment": "client"
     }
   ],
   "depends": {

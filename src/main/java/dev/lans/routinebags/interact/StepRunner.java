@@ -19,6 +19,7 @@ public final class StepRunner {
 
     private final ArrayDeque<Step> queue = new ArrayDeque<>();
     private @Nullable Component abortMessage;
+    private @Nullable Step cancelCleanup;
     private int cooldownTicks;
 
     public void enqueue(Step step) {
@@ -36,7 +37,20 @@ public final class StepRunner {
 
     public void clear() {
         this.queue.clear();
+        this.cancelCleanup = null;
         this.cooldownTicks = 0;
+    }
+
+    public void setCancelCleanup(Step cleanup) {
+        this.cancelCleanup = cleanup;
+    }
+
+    public boolean hasCancelCleanup() {
+        return this.cancelCleanup != null;
+    }
+
+    public void clearCancelCleanup() {
+        this.cancelCleanup = null;
     }
 
     public @Nullable Component takeAbortMessage() {
@@ -47,8 +61,41 @@ public final class StepRunner {
 
     public void abort(Component message) {
         this.queue.clear();
+        this.cancelCleanup = null;
         this.cooldownTicks = 0;
         this.abortMessage = message;
+    }
+
+    public void cancelSafely(Component message) {
+        this.queue.clear();
+        this.cooldownTicks = 0;
+        Step cleanup = this.cancelCleanup;
+        if (cleanup == null) {
+            this.abortMessage = message;
+            return;
+        }
+        this.queue.addLast(retryCancelCleanup(cleanup, message));
+    }
+
+    public void abortAfter(Step cleanup, Component message) {
+        this.cancelCleanup = cleanup;
+        this.cancelSafely(message);
+    }
+
+    private Step retryCancelCleanup(Step cleanup, Component message) {
+        return () -> {
+            if (!cleanup.run()) {
+                this.queue.addFirst(retryCancelCleanup(cleanup, message));
+                return true;
+            }
+            if (this.cancelCleanup == cleanup) {
+                this.cancelCleanup = null;
+            }
+            if (this.abortMessage == null) {
+                this.abortMessage = message;
+            }
+            return true;
+        };
     }
 
     public void tick(int opsPerTick, int stepDelayTicks) {
@@ -59,10 +106,9 @@ public final class StepRunner {
         for (int i = 0; i < opsPerTick && !this.queue.isEmpty(); i++) {
             Step step = this.queue.pollFirst();
             if (!step.run()) {
-                this.queue.clear();
-                if (this.abortMessage == null) {
-                    this.abortMessage = Component.translatable("gui.routinebags.status.aborted");
-                }
+                Component message = this.abortMessage == null
+                        ? Component.translatable("gui.routinebags.status.aborted") : this.abortMessage;
+                this.cancelSafely(message);
                 return;
             }
             if (stepDelayTicks > 0 && !this.queue.isEmpty()) {

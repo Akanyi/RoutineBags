@@ -12,6 +12,7 @@ import net.minecraft.client.gui.components.Renderable;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.gui.screens.inventory.CreativeModeInventoryScreen;
+import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
@@ -68,7 +69,7 @@ public final class ContainerMounts {
     @SubscribeEvent
     static void onKeyPressed(ScreenEvent.KeyPressed.Pre event) {
         MountedBagPanel panel = PANELS.get(event.getScreen());
-        if (panel != null && !recipeBookVisible(event.getScreen())
+        if (panel != null && panel.isLayoutAvailable() && !recipeBookVisible(event.getScreen())
                 && panel.matchesToggleKey(event.getKeyCode(), event.getScanCode(), event.getModifiers())) {
             panel.toggleOpen();
             if (event.getScreen() instanceof AbstractContainerScreen<?> containerScreen) {
@@ -103,6 +104,15 @@ public final class ContainerMounts {
             }
             panel.tick();
         }
+    }
+
+    public static boolean hasActiveOperation(AbstractContainerMenu menu) {
+        for (MountedBagPanel panel : PANELS.values()) {
+            if (panel.isMountedTo(menu) && panel.hasActiveOperation()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static boolean isUnsupported(AbstractContainerScreen<?> screen) {

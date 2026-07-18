@@ -43,18 +43,23 @@ final class SortService {
 
     private static List<Bag> scan(PlayerInventory inv) {
         List<Bag> out = new ArrayList<>();
-        for (int slot = 0; slot < inv.getSize(); slot++) {
-            ItemStack stack = inv.getItem(slot);
-            if (stack == null || stack.isEmpty() || stack.getAmount() != 1) {
-                continue;
-            }
-            BundleContents contents = stack.getData(DataComponentTypes.BUNDLE_CONTENTS);
-            if (contents != null) {
-                List<ItemStack> copy = contents.contents().stream().map(ItemStack::clone).toList();
-                out.add(new Bag(slot, stack.clone(), copy, usedWeight(copy)));
-            }
+        for (int slot = 0; slot < 36; slot++) {
+            recognize(out, inv, slot);
         }
+        recognize(out, inv, 40);
         return out;
+    }
+
+    private static void recognize(List<Bag> out, PlayerInventory inv, int slot) {
+        ItemStack stack = inv.getItem(slot);
+        if (stack == null || stack.isEmpty() || stack.getAmount() != 1) {
+            return;
+        }
+        BundleContents contents = stack.getData(DataComponentTypes.BUNDLE_CONTENTS);
+        if (contents != null) {
+            List<ItemStack> copy = contents.contents().stream().map(ItemStack::clone).toList();
+            out.add(new Bag(slot, stack.clone(), copy));
+        }
     }
 
     private static List<List<ItemStack>> buildLayout(List<Bag> bags, List<ItemKey> order, Map<ItemKey, Integer> totals) {
@@ -63,60 +68,80 @@ final class SortService {
             fillOrder.add(i);
         }
         fillOrder.sort((a, b) -> {
-            int cmp = Integer.compare(bags.get(b).usedUnits, bags.get(a).usedUnits);
+            int cmp = BundleWeights.compareContents(bags.get(b).contents, bags.get(a).contents);
             return cmp != 0 ? cmp : Integer.compare(bags.get(a).slot, bags.get(b).slot);
         });
 
         List<List<ItemStack>> layout = new ArrayList<>();
-        int[] free = new int[bags.size()];
         for (int i = 0; i < bags.size(); i++) {
             layout.add(new ArrayList<>());
-            free[i] = 64;
         }
         for (ItemKey key : order) {
             int remaining = totals.getOrDefault(key, 0);
             if (remaining <= 0) {
                 continue;
             }
-            int unit = unitWeight(key.proto);
-            int wholeWeight = remaining * unit;
             int wholeTarget = -1;
             for (int i : fillOrder) {
-                if (free[i] >= wholeWeight) {
+                if (BundleWeights.maxInsertable(layout.get(i), key.proto, remaining) >= remaining) {
                     wholeTarget = i;
                     break;
                 }
             }
             if (wholeTarget != -1) {
                 addStacks(layout.get(wholeTarget), key.proto, remaining);
-                free[wholeTarget] -= wholeWeight;
                 continue;
             }
             for (int i : fillOrder) {
                 if (remaining <= 0) {
                     break;
                 }
-                int fit = free[i] / unit;
-                int take = Math.min(fit, remaining);
+                int take = BundleWeights.maxInsertable(layout.get(i), key.proto, remaining);
                 if (take > 0) {
                     addStacks(layout.get(i), key.proto, take);
-                    free[i] -= take * unit;
                     remaining -= take;
                 }
+            }
+            if (remaining > 0) {
+                throw new IllegalStateException("Bundle layout could not preserve every item");
             }
         }
         return layout;
     }
 
     private static void applyLayout(PlayerInventory inv, List<Bag> bags, List<List<ItemStack>> layout) {
+        for (Bag bag : bags) {
+            if (!sameStack(inv.getItem(bag.slot), bag.stack)) {
+                throw new IllegalStateException("Bundle inventory changed while sorting");
+            }
+        }
+        ItemStack[] originalStorage = cloneContents(inv.getStorageContents());
+        ItemStack originalOffhand = cloneOrNull(inv.getItem(40));
+        ItemStack[] finalStorage = cloneContents(originalStorage);
+        ItemStack finalOffhand = cloneOrNull(originalOffhand);
         for (int i = 0; i < bags.size(); i++) {
             Bag bag = bags.get(i);
-            ItemStack live = inv.getItem(bag.slot);
-            if (live == null || live.isEmpty() || live.getAmount() != 1 || live.getData(DataComponentTypes.BUNDLE_CONTENTS) == null) {
-                continue;
+            ItemStack replacement = bag.stack.clone();
+            replacement.setData(DataComponentTypes.BUNDLE_CONTENTS, BundleContents.bundleContents(layout.get(i)));
+            if (bag.slot == 40) {
+                finalOffhand = replacement;
+            } else {
+                finalStorage[bag.slot] = replacement;
             }
-            live.setData(DataComponentTypes.BUNDLE_CONTENTS, BundleContents.bundleContents(layout.get(i)));
-            inv.setItem(bag.slot, live);
+        }
+        try {
+            inv.setStorageContents(finalStorage);
+            if (!sameStack(originalOffhand, finalOffhand)) {
+                inv.setItem(40, finalOffhand);
+            }
+        } catch (RuntimeException ex) {
+            try {
+                inv.setStorageContents(cloneContents(originalStorage));
+                inv.setItem(40, cloneOrNull(originalOffhand));
+            } catch (RuntimeException rollbackFailure) {
+                ex.addSuppressed(rollbackFailure);
+            }
+            throw ex;
         }
     }
 
@@ -142,25 +167,27 @@ final class SortService {
         };
     }
 
-    private static int usedWeight(List<ItemStack> contents) {
-        int total = 0;
-        for (ItemStack stack : contents) {
-            if (!isEmpty(stack)) {
-                total += unitWeight(stack) * stack.getAmount();
-            }
-        }
-        return Math.min(total, 64);
-    }
-
-    private static int unitWeight(ItemStack stack) {
-        return Math.max(1, 64 / Math.max(1, stack.getMaxStackSize()));
-    }
-
     private static boolean isEmpty(ItemStack stack) {
         return stack == null || stack.isEmpty() || stack.getAmount() <= 0;
     }
 
-    private record Bag(int slot, ItemStack stack, List<ItemStack> contents, int usedUnits) {}
+    private static boolean sameStack(ItemStack left, ItemStack right) {
+        return isEmpty(left) ? isEmpty(right) : !isEmpty(right) && left.equals(right);
+    }
+
+    private static ItemStack cloneOrNull(ItemStack stack) {
+        return isEmpty(stack) ? null : stack.clone();
+    }
+
+    private static ItemStack[] cloneContents(ItemStack[] contents) {
+        ItemStack[] copy = new ItemStack[contents.length];
+        for (int i = 0; i < contents.length; i++) {
+            copy[i] = cloneOrNull(contents[i]);
+        }
+        return copy;
+    }
+
+    private record Bag(int slot, ItemStack stack, List<ItemStack> contents) {}
 
     private static final class ItemKey {
         private final ItemStack proto;
