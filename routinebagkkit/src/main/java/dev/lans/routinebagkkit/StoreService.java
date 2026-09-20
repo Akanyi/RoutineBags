@@ -14,11 +14,99 @@ final class StoreService {
         if (request.containerId() != liveContainerId || request.amount() <= 0) {
             return StoreResult.fail("gui.routinebags.status.server_store_failed");
         }
-        return store(player, request.sourceSlot(), settings, request.containerId(),
+        if (request.sourceSlot() == -1) {
+            return storeFromCursor(player, settings, request.containerId(),
+                    request.amount(), request.expectedHash());
+        }
+        return storeFromInventory(player, request.sourceSlot(), settings, request.containerId(),
                 request.amount(), request.expectedHash());
     }
 
-    private StoreResult store(Player player, int sourceSlot, PluginSettings settings, int expectedContainerId,
+    private StoreResult storeFromCursor(Player player, PluginSettings settings, int expectedContainerId,
+            int expectedAmount, byte[] expectedHash) {
+        ItemStack source = player.getItemOnCursor();
+        if (isEmpty(source) || source.getAmount() <= 0 || expectedAmount <= 0
+                || expectedAmount > source.getAmount() || expectedAmount > settings.maxItemsPerRequest
+                || !BundleWeights.canStore(source)) {
+            return StoreResult.fail("gui.routinebags.cant_fit");
+        }
+        if (expectedHash != null && !MessageDigest.isEqual(identityHash(source), expectedHash)) {
+            return StoreResult.fail("gui.routinebags.status.server_store_failed");
+        }
+        ItemStack originalCursor = source.clone();
+        PlayerInventory inv = player.getInventory();
+        List<Bag> bags = scan(inv, -1, settings.maxBags);
+        if (bags.isEmpty()) {
+            return StoreResult.fail("gui.routinebags.status.bags_full_generic");
+        }
+
+        ItemStack remaining = originalCursor.clone();
+        remaining.setAmount(expectedAmount);
+        int moved = 0;
+        List<BagUpdate> updates = new ArrayList<>();
+        for (Bag bag : bags) {
+            if (remaining.getAmount() <= 0) {
+                break;
+            }
+            int fit = BundleWeights.maxInsertable(bag.contents, remaining, remaining.getAmount());
+            if (fit <= 0) {
+                continue;
+            }
+            addStacks(bag.contents, remaining, fit);
+            remaining.setAmount(remaining.getAmount() - fit);
+            moved += fit;
+            updates.add(new BagUpdate(bag.slot, bag.stack, BundleContents.bundleContents(bag.contents)));
+        }
+        if (moved <= 0) {
+            return StoreResult.fail("gui.routinebags.status.bags_full_generic");
+        }
+        if (expectedContainerId >= 0 && PaperContainerId.current(player) != expectedContainerId) {
+            return StoreResult.fail("gui.routinebags.status.server_store_failed");
+        }
+        if (!sameStack(player.getItemOnCursor(), originalCursor)) {
+            return StoreResult.fail("gui.routinebags.status.server_store_failed");
+        }
+        for (BagUpdate update : updates) {
+            if (!sameStack(inv.getItem(update.slot), update.original)) {
+                return StoreResult.fail("gui.routinebags.status.server_store_failed");
+            }
+        }
+
+        ItemStack[] originalStorage = cloneContents(inv.getStorageContents());
+        ItemStack originalOffhand = cloneOrNull(inv.getItem(40));
+        ItemStack[] finalStorage = cloneContents(originalStorage);
+        ItemStack finalOffhand = cloneOrNull(originalOffhand);
+        boolean offhandChanged = false;
+        for (BagUpdate update : updates) {
+            ItemStack replacement = update.original.clone();
+            replacement.setData(DataComponentTypes.BUNDLE_CONTENTS, update.contents);
+            if (update.slot == 40) {
+                finalOffhand = replacement;
+                offhandChanged = true;
+            } else {
+                finalStorage[update.slot] = replacement;
+            }
+        }
+        ItemStack finalCursor = originalCursor.clone();
+        finalCursor.setAmount(originalCursor.getAmount() - moved);
+        if (finalCursor.getAmount() <= 0) {
+            finalCursor = null;
+        }
+        try {
+            inv.setStorageContents(finalStorage);
+            if (offhandChanged) {
+                inv.setItem(40, finalOffhand);
+            }
+            player.setItemOnCursor(finalCursor);
+        } catch (RuntimeException ex) {
+            rollback(player, inv, originalStorage, originalOffhand, originalCursor, ex);
+            throw ex;
+        }
+        player.updateInventory();
+        return new StoreResult(true, moved, "gui.routinebags.status.server_stored");
+    }
+
+    private StoreResult storeFromInventory(Player player, int sourceSlot, PluginSettings settings, int expectedContainerId,
             int expectedAmount, byte[] expectedHash) {
         PlayerInventory inv = player.getInventory();
         sourceSlot = bukkitSlotForMenuSlot(sourceSlot);
@@ -178,6 +266,17 @@ final class StoreService {
         try {
             inv.setStorageContents(cloneContents(storage));
             inv.setItem(40, cloneOrNull(offhand));
+        } catch (RuntimeException rollbackFailure) {
+            cause.addSuppressed(rollbackFailure);
+        }
+    }
+
+    private static void rollback(Player player, PlayerInventory inv, ItemStack[] storage, ItemStack offhand,
+            ItemStack cursor, RuntimeException cause) {
+        try {
+            inv.setStorageContents(cloneContents(storage));
+            inv.setItem(40, cloneOrNull(offhand));
+            player.setItemOnCursor(cloneOrNull(cursor));
         } catch (RuntimeException rollbackFailure) {
             cause.addSuppressed(rollbackFailure);
         }

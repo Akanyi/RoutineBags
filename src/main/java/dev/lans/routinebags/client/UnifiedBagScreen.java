@@ -86,6 +86,8 @@ public final class UnifiedBagScreen extends Screen {
     private int pendingTakeRequest = -1;
     private int pendingTakeTicks;
     private boolean closeWhenRunnerStops;
+    private boolean draggingGridScroll;
+    private boolean draggingBagScroll;
 
     private int left;
     private int top;
@@ -319,12 +321,10 @@ public final class UnifiedBagScreen extends Screen {
                 hovered = entry;
             }
         }
-        int totalRows = Math.max(1, (this.visible.size() + GRID_COLS - 1) / GRID_COLS);
-        if (totalRows > this.gridRows) {
-            int trackX = this.gridRect.x + GRID_W + 1;
-            int thumbH = Math.max(8, this.gridH * this.gridRows / totalRows);
-            int thumbY = this.gridRect.y + (this.gridH - thumbH) * this.scrollRow / Math.max(1, totalRows - this.gridRows);
-            VanillaUi.scrollbar(g, trackX, this.gridRect.y, this.gridH, thumbY, thumbH);
+        ScrollMetrics gridScroll = gridScrollMetrics();
+        if (gridScroll != null) {
+            VanillaUi.scrollbar(g, gridScroll.trackX, gridScroll.trackY, gridScroll.trackH,
+                    gridScroll.thumbY, gridScroll.thumbH);
         }
         if (hovered != null) {
             g.setTooltipForNextFrame(this.font, entryTooltip(hovered), hovered.display.getTooltipImage(),
@@ -368,13 +368,14 @@ public final class UnifiedBagScreen extends Screen {
             int y = this.sidebarRect.y + row * SIDEBAR_ROW_H;
             boolean hover = mouseX >= x && mouseX < x + SIDEBAR_W && mouseY >= y && mouseY < y + SIDEBAR_ROW_H - 2;
             boolean selected = this.bagFilter == ordinal;
-            VanillaUi.button(g, x, y, SIDEBAR_W, SIDEBAR_ROW_H - 2, selected || hover, true);
+            int rowW = SIDEBAR_W - (bagScrollMetrics() != null ? VanillaUi.SCROLLBAR_W + 1 : 0);
+            VanillaUi.button(g, x, y, rowW, SIDEBAR_ROW_H - 2, selected || hover, true);
             g.item(bag.bagStack, x + 1, y + 1);
             String label = "#" + (ordinal + 1);
             g.text(this.font, label, x + 20, y + 1,
                     bag.mutable ? VanillaUi.buttonText(selected || hover, true) : 0xFFFF8080);
             int barX = x + 20 + this.font.width(label) + 3;
-            int barW = SIDEBAR_W - (barX - x) - 4;
+            int barW = Math.max(8, rowW - (barX - x) - 4);
             float pct = bag.fillFraction();
             g.fill(barX, y + 3, barX + barW, y + 7, VanillaUi.SLOT_SHADOW);
             g.fill(barX, y + 3, barX + Math.round(barW * pct), y + 7, capacityColor(pct));
@@ -384,6 +385,11 @@ public final class UnifiedBagScreen extends Screen {
                 g.setTooltipForNextFrame(this.font, bagTooltip(bag, ordinal),
                         bag.bagStack.getTooltipImage(), mouseX, mouseY, bag.bagStack.get(DataComponents.TOOLTIP_STYLE));
             }
+        }
+        ScrollMetrics bagScrollBar = bagScrollMetrics();
+        if (bagScrollBar != null) {
+            VanillaUi.scrollbar(g, bagScrollBar.trackX, bagScrollBar.trackY, bagScrollBar.trackH,
+                    bagScrollBar.thumbY, bagScrollBar.thumbH);
         }
         if (this.bags.size() > this.sidebarVisibleRows) {
             Component pageInfo = Component.translatable("gui.routinebags.bag_page",
@@ -575,6 +581,9 @@ public final class UnifiedBagScreen extends Screen {
             clearSearch();
             return true;
         }
+        if (!rightClick && beginScrollDrag(mx, my)) {
+            return true;
+        }
         if (this.sortBtn.contains(mx, my)) {
             if (!InvOps.carried().isEmpty()) {
                 this.status = Component.translatable("gui.routinebags.status.cursor_busy");
@@ -646,6 +655,12 @@ public final class UnifiedBagScreen extends Screen {
                 return;
             }
             this.status = null;
+            int amount = rightClick ? 1 : carried.getCount();
+            if (ServerBridge.requestStoreFromCursor(amount)) {
+                this.waitingServerSort = true;
+                this.status = Component.translatable("gui.routinebags.status.server_storing");
+                return;
+            }
             if (rightClick) {
                 CursorOps.storeOneFromCursor(this.runner);
             } else {
@@ -825,6 +840,66 @@ public final class UnifiedBagScreen extends Screen {
         return this.sortMode != SortMode.BY_CREATIVE && ServerBridge.canSortOnServer();
     }
 
+    private boolean beginScrollDrag(double mx, double my) {
+        ScrollMetrics gridScroll = gridScrollMetrics();
+        if (gridScroll != null && VanillaUi.overScrollbar(mx, my, gridScroll.trackX, gridScroll.trackY, gridScroll.trackH)) {
+            this.draggingGridScroll = true;
+            this.draggingBagScroll = false;
+            applyGridScrollAt(my, gridScroll);
+            return true;
+        }
+        ScrollMetrics bagScroll = bagScrollMetrics();
+        if (bagScroll != null && VanillaUi.overScrollbar(mx, my, bagScroll.trackX, bagScroll.trackY, bagScroll.trackH)) {
+            this.draggingBagScroll = true;
+            this.draggingGridScroll = false;
+            applyBagScrollAt(my, bagScroll);
+            return true;
+        }
+        return false;
+    }
+
+    private void applyGridScrollAt(double my, ScrollMetrics metrics) {
+        this.scrollRow = VanillaUi.scrollRowAt(my, metrics.trackY, metrics.trackH, metrics.thumbH, metrics.maxScroll);
+        refresh();
+    }
+
+    private void applyBagScrollAt(double my, ScrollMetrics metrics) {
+        this.bagScroll = VanillaUi.scrollRowAt(my, metrics.trackY, metrics.trackH, metrics.thumbH, metrics.maxScroll);
+        refresh();
+    }
+
+    private @Nullable ScrollMetrics gridScrollMetrics() {
+        if (this.gridRect == null) {
+            return null;
+        }
+        int totalRows = Math.max(1, (this.visible.size() + GRID_COLS - 1) / GRID_COLS);
+        int maxScroll = Math.max(0, totalRows - this.gridRows);
+        if (maxScroll <= 0) {
+            return null;
+        }
+        int trackX = this.gridRect.x + GRID_W + 1;
+        int thumbH = VanillaUi.thumbHeight(this.gridH, this.gridRows, totalRows);
+        int thumbY = VanillaUi.thumbY(this.gridRect.y, this.gridH, thumbH, this.scrollRow, maxScroll);
+        return new ScrollMetrics(trackX, this.gridRect.y, this.gridH, thumbY, thumbH, maxScroll);
+    }
+
+    private @Nullable ScrollMetrics bagScrollMetrics() {
+        if (this.sidebarRect == null) {
+            return null;
+        }
+        int maxScroll = Math.max(0, this.bags.size() - this.sidebarVisibleRows);
+        if (maxScroll <= 0) {
+            return null;
+        }
+        int trackX = this.sidebarRect.x + SIDEBAR_W - VanillaUi.SCROLLBAR_W;
+        int thumbH = VanillaUi.thumbHeight(this.gridH, this.sidebarVisibleRows, this.bags.size());
+        int thumbY = VanillaUi.thumbY(this.sidebarRect.y, this.gridH, thumbH, this.bagScroll, maxScroll);
+        return new ScrollMetrics(trackX, this.sidebarRect.y, this.gridH, thumbY, thumbH, maxScroll);
+    }
+
+    private record ScrollMetrics(int trackX, int trackY, int trackH, int thumbY, int thumbH, int maxScroll) {
+    }
+
     private int invMenuSlotAt(double mx, double my) {
         if (this.invRect.contains(mx, my)) {
             int col = (int) ((mx - this.invRect.x) / CELL);
@@ -841,7 +916,49 @@ public final class UnifiedBagScreen extends Screen {
     }
 
     @Override
+    public boolean mouseDragged(MouseButtonEvent event, double dragX, double dragY) {
+        if (event.button() == 0 && this.draggingGridScroll) {
+            ScrollMetrics metrics = gridScrollMetrics();
+            if (metrics != null) {
+                applyGridScrollAt(event.y(), metrics);
+            }
+            return true;
+        }
+        if (event.button() == 0 && this.draggingBagScroll) {
+            ScrollMetrics metrics = bagScrollMetrics();
+            if (metrics != null) {
+                applyBagScrollAt(event.y(), metrics);
+            }
+            return true;
+        }
+        return super.mouseDragged(event, dragX, dragY);
+    }
+
+    @Override
+    public boolean mouseReleased(MouseButtonEvent event) {
+        if (event.button() == 0) {
+            this.draggingGridScroll = false;
+            this.draggingBagScroll = false;
+        }
+        return super.mouseReleased(event);
+    }
+
+    @Override
     public boolean mouseScrolled(double x, double y, double scrollX, double scrollY) {
+        ScrollMetrics gridScroll = gridScrollMetrics();
+        if (gridScroll != null && VanillaUi.overScrollbar(x, y, gridScroll.trackX, gridScroll.trackY, gridScroll.trackH)) {
+            int step = shiftDown() ? Math.max(1, this.gridRows - 1) : 1;
+            this.scrollRow -= (int) Math.signum(scrollY) * step;
+            refresh();
+            return true;
+        }
+        ScrollMetrics bagScroll = bagScrollMetrics();
+        if (bagScroll != null && VanillaUi.overScrollbar(x, y, bagScroll.trackX, bagScroll.trackY, bagScroll.trackH)) {
+            int step = shiftDown() ? Math.max(1, this.sidebarVisibleRows - 1) : 1;
+            this.bagScroll -= (int) Math.signum(scrollY) * step;
+            refresh();
+            return true;
+        }
         if (this.gridRect != null && this.gridRect.contains(x, y)) {
             int step = shiftDown() ? Math.max(1, this.gridRows - 1) : 1;
             this.scrollRow -= (int) Math.signum(scrollY) * step;

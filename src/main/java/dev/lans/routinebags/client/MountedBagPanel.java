@@ -80,6 +80,7 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
     private boolean focused;
     private boolean open = openState;
     private boolean mouseCaptured;
+    private boolean draggingGridScroll;
     private boolean suppressed;
     private boolean layoutAvailable;
 
@@ -156,6 +157,12 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
         if (serverSortResult != null) {
             this.waitingServerSort = false;
             this.status = Component.translatable(serverSortResult.messageKey(), serverSortResult.moves());
+        }
+        var serverStoreResultV3 = ServerBridge.takeStoreResultV3();
+        if (serverStoreResultV3 != null) {
+            this.waitingServerSort = false;
+            this.status = Component.translatable(serverStoreResultV3.messageKey(), serverStoreResultV3.moved());
+            refresh();
         }
         if (this.pendingTakeRequest >= 0) {
             var serverTakeResult = ServerBridge.takeTakeResult(this.pendingTakeRequest);
@@ -320,12 +327,10 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
                 hovered = entry;
             }
         }
-        int totalRows = Math.max(1, (this.visible.size() + GRID_COLS - 1) / GRID_COLS);
-        if (totalRows > this.gridRows) {
-            int trackX = this.gridRect.x + GRID_W + 1;
-            int thumbH = Math.max(8, this.gridH * this.gridRows / totalRows);
-            int thumbY = this.gridRect.y + (this.gridH - thumbH) * this.scrollRow / Math.max(1, totalRows - this.gridRows);
-            VanillaUi.scrollbar(g, trackX, this.gridRect.y, this.gridH, thumbY, thumbH);
+        ScrollMetrics gridScroll = gridScrollMetrics();
+        if (gridScroll != null) {
+            VanillaUi.scrollbar(g, gridScroll.trackX, gridScroll.trackY, gridScroll.trackH,
+                    gridScroll.thumbY, gridScroll.thumbH);
         }
         if (hovered != null) {
             g.setTooltipForNextFrame(this.minecraft.font, entryTooltip(hovered), hovered.display.getTooltipImage(),
@@ -449,6 +454,9 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
         this.mouseCaptured = true;
         this.focused = true;
         boolean rightClick = event.button() == GLFW.GLFW_MOUSE_BUTTON_RIGHT;
+        if (!rightClick && beginScrollDrag(mx, my)) {
+            return true;
+        }
         if (this.closeBtn.contains(mx, my)) {
             toggleOpen();
             return true;
@@ -468,6 +476,7 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
             this.sorter.cancel();
             this.runner.cancelSafely(Component.translatable("gui.routinebags.status.operation_cancelled"));
             this.waitingServerSort = false;
+            ServerBridge.cancelStoreRequest();
             ServerBridge.cancelTakeRequest(this.pendingTakeRequest);
             this.pendingTakeRequest = -1;
             this.pendingTakeTicks = 0;
@@ -502,6 +511,9 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
         if (this.suppressed) {
             return false;
         }
+        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+            this.draggingGridScroll = false;
+        }
         if (this.mouseCaptured || isMouseOver(mouseX, mouseY)) {
             this.mouseCaptured = false;
             return true;
@@ -510,7 +522,17 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
     }
 
     public boolean consumeMouseDragged(double mouseX, double mouseY, int button) {
-        return !this.suppressed && (this.mouseCaptured || isMouseOver(mouseX, mouseY));
+        if (this.suppressed) {
+            return false;
+        }
+        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && this.draggingGridScroll) {
+            ScrollMetrics metrics = gridScrollMetrics();
+            if (metrics != null) {
+                applyGridScrollAt(mouseY, metrics);
+            }
+            return true;
+        }
+        return this.mouseCaptured || isMouseOver(mouseX, mouseY);
     }
 
     private void startSort() {
@@ -547,6 +569,12 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
                 return;
             }
             this.status = null;
+            int amount = rightClick ? 1 : carried.getCount();
+            if (ServerBridge.requestStoreFromCursor(amount)) {
+                this.waitingServerSort = true;
+                this.status = Component.translatable("gui.routinebags.status.server_storing");
+                return;
+            }
             if (rightClick) {
                 CursorOps.storeOneFromCursor(this.runner);
             } else {
@@ -641,18 +669,53 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
         return this.sortMode != SortMode.BY_CREATIVE && ServerBridge.canSortOnServer();
     }
 
+    private boolean beginScrollDrag(double mx, double my) {
+        ScrollMetrics metrics = gridScrollMetrics();
+        if (metrics == null || !VanillaUi.overScrollbar(mx, my, metrics.trackX, metrics.trackY, metrics.trackH)) {
+            return false;
+        }
+        this.draggingGridScroll = true;
+        applyGridScrollAt(my, metrics);
+        return true;
+    }
+
+    private void applyGridScrollAt(double my, ScrollMetrics metrics) {
+        this.scrollRow = VanillaUi.scrollRowAt(my, metrics.trackY, metrics.trackH, metrics.thumbH, metrics.maxScroll);
+        refresh();
+    }
+
+    private @Nullable ScrollMetrics gridScrollMetrics() {
+        if (this.gridRect == null) {
+            return null;
+        }
+        int totalRows = Math.max(1, (this.visible.size() + GRID_COLS - 1) / GRID_COLS);
+        int maxScroll = Math.max(0, totalRows - this.gridRows);
+        if (maxScroll <= 0) {
+            return null;
+        }
+        int trackX = this.gridRect.x + GRID_W + 1;
+        int thumbH = VanillaUi.thumbHeight(this.gridH, this.gridRows, totalRows);
+        int thumbY = VanillaUi.thumbY(this.gridRect.y, this.gridH, thumbH, this.scrollRow, maxScroll);
+        return new ScrollMetrics(trackX, this.gridRect.y, this.gridH, thumbY, thumbH, maxScroll);
+    }
+
+    private record ScrollMetrics(int trackX, int trackY, int trackH, int thumbY, int thumbH, int maxScroll) {
+    }
+
     @Override
     public boolean mouseScrolled(double x, double y, double scrollX, double scrollY) {
         if (!this.layoutAvailable || !this.open) {
             return false;
         }
-        if (!this.gridRect.contains(x, y)) {
-            return false;
+        ScrollMetrics metrics = gridScrollMetrics();
+        if ((metrics != null && VanillaUi.overScrollbar(x, y, metrics.trackX, metrics.trackY, metrics.trackH))
+                || this.gridRect.contains(x, y)) {
+            int step = shiftDown() ? Math.max(1, this.gridRows - 1) : 1;
+            this.scrollRow -= (int) Math.signum(scrollY) * step;
+            refresh();
+            return true;
         }
-        int step = shiftDown() ? Math.max(1, this.gridRows - 1) : 1;
-        this.scrollRow -= (int) Math.signum(scrollY) * step;
-        refresh();
-        return true;
+        return false;
     }
 
     @Override

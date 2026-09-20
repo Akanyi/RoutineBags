@@ -45,7 +45,7 @@ public final class ClientConfig {
     public static final ModConfigSpec.EnumValue<SortMode> SORT_MODE = BUILDER
             .comment("Default ordering of the unified view and of sorted bundles.")
             .translation("routinebags.configuration.sortMode")
-            .defineEnum("sortMode", SortMode.BY_CREATIVE);
+            .defineEnum("sortMode", SortMode.BY_ID);
 
     public static final ModConfigSpec SPEC = BUILDER.build();
 

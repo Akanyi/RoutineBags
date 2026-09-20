@@ -18,9 +18,9 @@ Routine Bags 是面向 Minecraft `26.1.2` 的客户端模组，同时提供 NeoF
 
 | 文件 | 用途 | 运行位置 |
 |---|---|---|
-| `routinebags-0.3.0.jar` | NeoForge 模组 | NeoForge 客户端；也可选装到 NeoForge 服务端 |
-| `routinebags-fabric-0.3.0.jar` | Fabric 模组 | Fabric 客户端，需要 Fabric API |
-| `routinebagkkit-0.3.0.jar` | RoutineBagkkit 插件 | Paper `26.1.2` 服务端，可选 |
+| `routinebags-0.3.1.jar` | NeoForge 模组 | NeoForge 客户端；也可选装到 NeoForge 服务端 |
+| `routinebags-fabric-0.3.1.jar` | Fabric 模组 | Fabric 客户端，需要 Fabric API |
+| `routinebagkkit-0.3.1.jar` | RoutineBagkkit 插件 | Paper `26.1.2` 服务端，可选 |
 
 ## 主要功能
 
@@ -59,21 +59,21 @@ Routine Bags 通过原版数据组件识别收纳物品，而不是维护物品 
 ### NeoForge 客户端
 
 1. 安装 Minecraft `26.1.2` 对应的 NeoForge。
-2. 下载 `routinebags-0.3.0.jar`。
+2. 下载 `routinebags-0.3.1.jar`。
 3. 将 jar 放入客户端的 `mods` 文件夹。
 
 ### Fabric 客户端
 
 1. 安装 Fabric Loader `0.19.3` 和适用于 Minecraft `26.1.2` 的 Fabric API。
-2. 下载 `routinebags-fabric-0.3.0.jar`。
+2. 下载 `routinebags-fabric-0.3.1.jar`。
 3. 将 Routine Bags 和 Fabric API 一起放入客户端的 `mods` 文件夹。
 
 ### 可选服务端增强
 
 普通服务器不需要安装任何东西。需要服务端增强时，可以选择：
 
-- **NeoForge 服务端**：安装同一个 `routinebags-0.3.0.jar`，提供服务端整理、智能存入和精确拿取。
-- **Paper 服务端**：安装 `routinebagkkit-0.3.0.jar`，提供服务端整理、跨袋智能存入和精确拿取。
+- **NeoForge 服务端**：安装同一个 `routinebags-0.3.1.jar`，提供服务端整理、智能存入和精确拿取。
+- **Paper 服务端**：安装 `routinebagkkit-0.3.1.jar`，提供服务端整理、跨袋智能存入和精确拿取。
 
 Fabric 专用服务端组件目前尚未提供；Fabric 客户端仍可使用完整的客户端脚本模式。
 
@@ -143,7 +143,7 @@ Fabric 专用服务端组件目前尚未提供；Fabric 客户端仍可使用完
 | `showReadOnlyContainers` | `true` | - | 是否展示只读容器内容 |
 | `mountInContainerScreens` | `true` | - | 是否在容器界面旁挂载 RTbags 面板 |
 | `mountedPanelOpenByDefault` | `false` | - | 挂载面板是否默认展开 |
-| `sortMode` | `BY_CREATIVE` | 枚举 | 默认排序方式 |
+| `sortMode` | `BY_ID` | 枚举 | 默认排序方式；服务端增强时默认可走服务端整理 |
 
 如果第三方服务器经常提示背包状态发生意外变化，优先将 `stepDelayTicks` 调到 `2` 或 `3`，而不是盲目提高 `opsPerTick`。
 

@@ -65,6 +65,15 @@ public final class ServerStoreService {
         if (player.containerMenu.containerId != payload.containerId() || payload.amount() <= 0) {
             return failed(payload.requestId());
         }
+        if (payload.menuSlot() == -1) {
+            ItemStack carried = player.containerMenu.getCarried();
+            if (carried.isEmpty() || carried.get(DataComponents.BUNDLE_CONTENTS) != null
+                    || !BundleContents.canItemBeInBundle(carried) || carried.getCount() < payload.amount()
+                    || !MessageDigest.isEqual(ItemIdentity.hash(carried, player.registryAccess()), payload.expectedHash())) {
+                return failed(payload.requestId());
+            }
+            return storeFromCursor(player, payload.requestId(), payload.containerId(), payload.amount(), carried);
+        }
         int invIndex = ServerBagScanner.invIndexForMenuSlot(payload.menuSlot());
         if (invIndex < 0) {
             return failed(payload.requestId());
@@ -76,10 +85,75 @@ public final class ServerStoreService {
                 || !MessageDigest.isEqual(ItemIdentity.hash(source, player.registryAccess()), payload.expectedHash())) {
             return failed(payload.requestId());
         }
-        return store(player, payload.requestId(), payload.containerId(), invIndex, source);
+        return storeFromInventory(player, payload.requestId(), payload.containerId(), invIndex, source);
     }
 
-    private static StoreResultV3Payload store(ServerPlayer player, int requestId, int expectedContainerId,
+    private static StoreResultV3Payload storeFromCursor(ServerPlayer player, int requestId, int expectedContainerId,
+            int amount, ItemStack carried) {
+        Inventory inventory = player.getInventory();
+        ItemStack originalCarried = carried.copy();
+        ItemStack toInsert = carried.copyWithCount(amount);
+        int moved = 0;
+        List<BagUpdate> updates = new ArrayList<>();
+        for (BagView bag : ServerBagScanner.scanMutableBundles(player)) {
+            if (toInsert.isEmpty()) {
+                break;
+            }
+            ItemStack liveBag = inventory.getItem(bag.invIndex);
+            BundleContents liveContents = liveBag.get(DataComponents.BUNDLE_CONTENTS);
+            if (liveBag.getCount() != 1 || liveContents == null) {
+                continue;
+            }
+            BundleContents.Mutable mutable = new BundleContents.Mutable(liveContents);
+            int inserted = mutable.tryInsert(toInsert);
+            if (inserted > 0) {
+                updates.add(new BagUpdate(bag.invIndex, liveBag.copy(), mutable.toImmutable()));
+                moved += inserted;
+            }
+        }
+        if (moved == 0) {
+            return failed(requestId);
+        }
+        if (expectedContainerId >= 0 && player.containerMenu.containerId != expectedContainerId) {
+            return failed(requestId);
+        }
+        if (!ItemStack.matches(player.containerMenu.getCarried(), originalCarried)) {
+            return failed(requestId);
+        }
+        for (BagUpdate update : updates) {
+            if (!ItemStack.matches(inventory.getItem(update.invIndex), update.originalBag)) {
+                return failed(requestId);
+            }
+        }
+        ItemStack remainingCarried = originalCarried.copy();
+        remainingCarried.shrink(moved);
+        Map<Integer, ItemStack> originals = new HashMap<>();
+        for (BagUpdate update : updates) {
+            originals.put(update.invIndex, update.originalBag);
+        }
+        try {
+            for (BagUpdate update : updates) {
+                ItemStack liveBag = inventory.getItem(update.invIndex).copy();
+                liveBag.set(DataComponents.BUNDLE_CONTENTS, update.contents);
+                inventory.setItem(update.invIndex, liveBag);
+            }
+            player.containerMenu.setCarried(remainingCarried.isEmpty() ? ItemStack.EMPTY : remainingCarried);
+        } catch (RuntimeException e) {
+            for (Map.Entry<Integer, ItemStack> original : originals.entrySet()) {
+                inventory.setItem(original.getKey(), original.getValue().copy());
+            }
+            player.containerMenu.setCarried(originalCarried.copy());
+            throw e;
+        }
+        inventory.setChanged();
+        player.inventoryMenu.broadcastChanges();
+        if (player.containerMenu != player.inventoryMenu) {
+            player.containerMenu.broadcastChanges();
+        }
+        return new StoreResultV3Payload(requestId, true, moved, "gui.routinebags.status.server_stored");
+    }
+
+    private static StoreResultV3Payload storeFromInventory(ServerPlayer player, int requestId, int expectedContainerId,
             int invIndex, ItemStack source) {
         Inventory inventory = player.getInventory();
         ItemStack originalSource = source.copy();

@@ -18,7 +18,7 @@ public final class ClientConfig {
     public static final Value<Boolean> SHOW_READ_ONLY = bool("showReadOnlyContainers", true);
     public static final Value<Boolean> MOUNT_IN_CONTAINER_SCREENS = bool("mountInContainerScreens", true);
     public static final Value<Boolean> MOUNTED_PANEL_OPEN_BY_DEFAULT = bool("mountedPanelOpenByDefault", false);
-    public static final Value<SortMode> SORT_MODE = value("sortMode", SortMode.BY_CREATIVE,
+    public static final Value<SortMode> SORT_MODE = value("sortMode", SortMode.BY_ID,
             raw -> SortMode.valueOf(raw.toUpperCase(Locale.ROOT)));
 
     private static final Properties VALUES = new Properties();

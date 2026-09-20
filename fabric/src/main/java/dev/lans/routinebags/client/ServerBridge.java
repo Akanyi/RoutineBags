@@ -99,21 +99,34 @@ public final class ServerBridge {
     }
 
     public static boolean requestStore(int menuSlot) {
+        ItemStack source = InvOps.stackAt(menuSlot);
+        return requestStore(menuSlot, source, source.getCount());
+    }
+
+    /** menuSlot=-1 表示从光标存入；amount 可为光标整堆或右键只存 1。 */
+    public static boolean requestStoreFromCursor(int amount) {
+        ItemStack carried = InvOps.carried();
+        if (carried.isEmpty() || amount <= 0) {
+            return false;
+        }
+        return requestStore(-1, carried, Math.min(amount, carried.getCount()));
+    }
+
+    private static boolean requestStore(int menuSlot, ItemStack source, int amount) {
         if (!canStoreOnServer() || pendingStore != null) {
             return false;
         }
         Minecraft minecraft = Minecraft.getInstance();
-        if (minecraft.player == null || minecraft.level == null) {
+        if (minecraft.player == null || minecraft.level == null || source.isEmpty() || amount <= 0) {
             return false;
         }
-        ItemStack source = InvOps.stackAt(menuSlot);
         byte[] expectedHash = ItemIdentity.hash(source, minecraft.level.registryAccess());
-        if (source.isEmpty() || expectedHash.length != ItemIdentity.HASH_SIZE) {
+        if (expectedHash.length != ItemIdentity.HASH_SIZE) {
             return false;
         }
         int requestId = nextRequestId();
         pendingStore = new StoreRequest(requestId, minecraft.player.containerMenu.containerId,
-                menuSlot, source.getCount(), expectedHash);
+                menuSlot, amount, expectedHash);
         lastStoreResultV3 = null;
         if (!sendStore(pendingStore)) {
             pendingStore = null;

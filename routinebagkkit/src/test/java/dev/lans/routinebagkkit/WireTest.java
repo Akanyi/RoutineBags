@@ -86,6 +86,25 @@ class WireTest {
         assertThrows(IllegalArgumentException.class, () -> Wire.readStoreRequestV3(payload.toByteArray()));
     }
 
+    @Test
+    void readsCursorStoreRequestWithNegativeSourceSlot() {
+        byte[] expectedHash = hash(16);
+        ByteArrayOutputStream payload = new ByteArrayOutputStream();
+        writeVarInt(payload, 5);
+        writeVarInt(payload, 3);
+        writeVarInt(payload, -1);
+        writeVarInt(payload, 12);
+        payload.writeBytes(expectedHash);
+
+        Wire.StoreRequestV3 request = Wire.readStoreRequestV3(payload.toByteArray());
+
+        assertEquals(5, request.requestId());
+        assertEquals(3, request.containerId());
+        assertEquals(-1, request.sourceSlot());
+        assertEquals(12, request.amount());
+        assertArrayEquals(expectedHash, request.expectedHash());
+    }
+
     private static void writeTarget(ByteArrayOutputStream output, int bagSlot, int entryIndex,
             int amount, byte[] expectedHash) {
         writeVarInt(output, bagSlot);
