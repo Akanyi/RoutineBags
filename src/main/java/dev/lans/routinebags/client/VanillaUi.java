@@ -1,6 +1,8 @@
 package dev.lans.routinebags.client;
 
 import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.Font;
+import net.minecraft.network.chat.Component;
 import net.minecraft.util.Mth;
 
 final class VanillaUi {
@@ -20,11 +22,27 @@ final class VanillaUi {
     static final int BUTTON = 0xFF6A6A6A;
     static final int BUTTON_HOVER = 0xFF7E7E7E;
     static final int BUTTON_DISABLED = 0xFF5A5A5A;
+    static final int LIST = 0xFFB8B8B8;
+    static final int LIST_HOVER = 0xFFD0D0D0;
+    static final int LIST_SELECTED = 0xFFE0E0E0;
+    static final int ACCENT = 0xFFFFFFFF;
     static final int SCROLLBAR_W = 6;
     static final int SCROLL_TRACK = 0xFF000000;
     static final int SCROLL_THUMB = 0xFFC6C6C6;
 
     private VanillaUi() {
+    }
+
+    static void text(GuiGraphicsExtractor g, Font font, String text, int x, int y, int color) {
+        g.text(font, text, x, y, color, false);
+    }
+
+    static void text(GuiGraphicsExtractor g, Font font, Component text, int x, int y, int color) {
+        g.text(font, text, x, y, color, false);
+    }
+
+    static void centeredText(GuiGraphicsExtractor g, Font font, Component text, int x, int y, int color) {
+        g.text(font, text, x - font.width(text) / 2, y, color, false);
     }
 
     static void panel(GuiGraphicsExtractor g, int x, int y, int w, int h) {
@@ -52,6 +70,26 @@ final class VanillaUi {
             return TEXT_DISABLED;
         }
         return hover ? TEXT_HOVER : TEXT_LIGHT;
+    }
+
+    /** A compact, container-style row rather than a dark menu button. */
+    static void listRow(GuiGraphicsExtractor g, int x, int y, int w, int h, boolean hover, boolean selected) {
+        int fill = selected ? LIST_SELECTED : (hover ? LIST_HOVER : LIST);
+        g.fill(x, y, x + w, y + h, SLOT_SHADOW);
+        g.fill(x + 1, y + 1, x + w, y + h, PANEL_HIGHLIGHT);
+        g.fill(x + 1, y + 1, x + w - 1, y + h - 1, fill);
+        if (selected) {
+            g.fill(x + 1, y + 1, x + 3, y + h - 1, ACCENT);
+        }
+    }
+
+    static void progressBar(GuiGraphicsExtractor g, int x, int y, int w, float progress, int color) {
+        g.fill(x, y, x + w, y + 4, SLOT_SHADOW);
+        g.fill(x + 1, y + 1, x + w - 1, y + 3, SLOT);
+        int filled = Math.round(Math.max(0, w - 2) * Mth.clamp(progress, 0.0F, 1.0F));
+        if (filled > 0) {
+            g.fill(x + 1, y + 1, x + 1 + filled, y + 3, color);
+        }
     }
 
     static void slot(GuiGraphicsExtractor g, int x, int y, int size) {

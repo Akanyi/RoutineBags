@@ -57,7 +57,8 @@ public final class UnifiedBagScreen extends Screen {
     private static final int BTN_H = 14;
     private static final int IMG_W = PAD + GRID_W + 6 + SIDEBAR_W + PAD;
     private static final int GRID_TOP = 35;
-    private static final int MIN_GRID_ROWS = 3;
+    private static final int INVENTORY_GAP = 17;
+    private static final int MIN_GRID_ROWS = 2;
     private static final int MAX_GRID_ROWS = 10;
 
     private record Rect(int x, int y, int w, int h) {
@@ -116,10 +117,9 @@ public final class UnifiedBagScreen extends Screen {
 
     @Override
     protected void init() {
-        int btnRowH = BTN_H + 18;
         int invH = 3 * CELL + 4 + CELL;
-        int footerH = 22;
-        int fixedH = GRID_TOP + 4 + btnRowH + invH + footerH + PAD;
+        int footerH = 16;
+        int fixedH = GRID_TOP + INVENTORY_GAP + invH + footerH + PAD;
         this.gridRows = Math.clamp((this.height - fixedH - 10) / CELL, MIN_GRID_ROWS, MAX_GRID_ROWS);
         this.gridH = this.gridRows * CELL;
         this.imgH = fixedH + this.gridH;
@@ -130,17 +130,16 @@ public final class UnifiedBagScreen extends Screen {
         int gridY = this.top + GRID_TOP;
         this.gridRect = new Rect(gridX, gridY, GRID_W, this.gridH);
         this.sidebarRect = new Rect(gridX + GRID_W + 6, gridY, SIDEBAR_W, this.gridH);
-        this.sidebarVisibleRows = Math.max(1, (this.gridH - 24) / SIDEBAR_ROW_H);
+        this.sidebarVisibleRows = Math.max(1, (this.gridH - 12) / SIDEBAR_ROW_H);
 
-        int btnY = gridY + this.gridH + 4;
-        this.sortBtn = new Rect(gridX, btnY, 56, BTN_H);
-        this.cancelBtn = new Rect(gridX + 60, btnY, 56, BTN_H);
-        this.modeBtn = new Rect(gridX + 120, btnY, 110, BTN_H);
-
-        int invY = btnY + btnRowH;
+        int invY = gridY + this.gridH + INVENTORY_GAP;
         this.invRect = new Rect(gridX, invY, GRID_W, 3 * CELL);
         this.hotbarRect = new Rect(gridX, invY + 3 * CELL + 4, GRID_W, CELL);
         this.offhandRect = new Rect(gridX + GRID_W + 6, invY + 3 * CELL + 4, CELL, CELL);
+        int controlsX = this.sidebarRect.x;
+        this.sortBtn = new Rect(controlsX, invY, 54, BTN_H);
+        this.cancelBtn = new Rect(controlsX + 58, invY, 54, BTN_H);
+        this.modeBtn = new Rect(controlsX, invY + BTN_H + 4, SIDEBAR_W, BTN_H);
 
         this.searchBox = new EditBox(this.font, this.left + IMG_W - PAD - 108, this.top + 6, 94, 12,
                 Component.translatable("gui.routinebags.search_hint"));
@@ -242,12 +241,12 @@ public final class UnifiedBagScreen extends Screen {
     @Override
     public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float a) {
         VanillaUi.panel(g, this.left, this.top, IMG_W, this.imgH);
-        g.text(this.font, this.title, this.left + PAD, this.top + 7, VanillaUi.TEXT);
+        VanillaUi.text(g, this.font, this.title, this.left + PAD, this.top + 7, VanillaUi.TEXT);
 
         g.nextStratum();
         super.extractRenderState(g, mouseX, mouseY, a);
 
-        drawHeaderStats(g, mouseX, mouseY);
+        drawHeader(g, mouseX, mouseY);
         drawGrid(g, mouseX, mouseY);
         drawSidebar(g, mouseX, mouseY);
         drawButtons(g, mouseX, mouseY);
@@ -257,22 +256,12 @@ public final class UnifiedBagScreen extends Screen {
         drawCarried(g, mouseX, mouseY);
     }
 
-    private void drawHeaderStats(GuiGraphicsExtractor g, int mouseX, int mouseY) {
-        int totalStacks = 0;
-        for (Entry entry : this.entries) {
-            totalStacks += entry.sources.size();
-        }
-        Component stats = Component.translatable("gui.routinebags.summary", this.visible.size(), this.entries.size(), this.bags.size(), totalStacks);
-        int x = this.left + PAD + this.font.width(this.title) + 8;
-        int maxW = Math.max(0, this.searchBox.getX() - x - 6);
-        if (maxW > 20 && this.font.width(stats) <= maxW) {
-            g.text(this.font, stats, x, this.top + 7, VanillaUi.TEXT_DIM);
-        }
+    private void drawHeader(GuiGraphicsExtractor g, int mouseX, int mouseY) {
         if (!this.query.isEmpty()) {
             boolean hover = this.searchClearBtn.contains(mouseX, mouseY);
             VanillaUi.button(g, this.searchClearBtn.x, this.searchClearBtn.y, this.searchClearBtn.w,
                     this.searchClearBtn.h, hover, true);
-            g.centeredText(this.font, Component.literal("x"), this.searchClearBtn.x + 6,
+            VanillaUi.centeredText(g, this.font, Component.literal("×"), this.searchClearBtn.x + 6,
                     this.searchClearBtn.y + 2, VanillaUi.buttonText(hover, true));
             if (hover) {
                 g.setComponentTooltipForNextFrame(this.font, List.of(Component.translatable("gui.routinebags.clear_search")), mouseX, mouseY);
@@ -291,7 +280,7 @@ public final class UnifiedBagScreen extends Screen {
             }
         }
         if (this.bags.isEmpty()) {
-            g.centeredText(this.font, Component.translatable("gui.routinebags.no_bags"),
+            VanillaUi.centeredText(g, this.font, Component.translatable("gui.routinebags.no_bags"),
                     this.gridRect.x + GRID_W / 2, this.gridRect.y + this.gridH / 2 - 4, VanillaUi.TEXT_DIM);
             return;
         }
@@ -299,7 +288,7 @@ public final class UnifiedBagScreen extends Screen {
             Component empty = this.query.isEmpty()
                     ? Component.translatable("gui.routinebags.no_items")
                     : Component.translatable("gui.routinebags.no_search_results", this.query);
-            g.centeredText(this.font, empty, this.gridRect.x + GRID_W / 2,
+            VanillaUi.centeredText(g, this.font, empty, this.gridRect.x + GRID_W / 2,
                     this.gridRect.y + this.gridH / 2 - 4, VanillaUi.TEXT_DIM);
         }
         Entry hovered = null;
@@ -369,17 +358,16 @@ public final class UnifiedBagScreen extends Screen {
             boolean hover = mouseX >= x && mouseX < x + SIDEBAR_W && mouseY >= y && mouseY < y + SIDEBAR_ROW_H - 2;
             boolean selected = this.bagFilter == ordinal;
             int rowW = SIDEBAR_W - (bagScrollMetrics() != null ? VanillaUi.SCROLLBAR_W + 1 : 0);
-            VanillaUi.button(g, x, y, rowW, SIDEBAR_ROW_H - 2, selected || hover, true);
+            VanillaUi.listRow(g, x, y, rowW, SIDEBAR_ROW_H - 2, hover, selected);
             g.item(bag.bagStack, x + 1, y + 1);
             String label = "#" + (ordinal + 1);
-            g.text(this.font, label, x + 20, y + 1,
-                    bag.mutable ? VanillaUi.buttonText(selected || hover, true) : 0xFFFF8080);
+            VanillaUi.text(g, this.font, label, x + 20, y + 1,
+                    bag.mutable ? VanillaUi.TEXT : VanillaUi.DANGER);
             int barX = x + 20 + this.font.width(label) + 3;
             int barW = Math.max(8, rowW - (barX - x) - 4);
             float pct = bag.fillFraction();
-            g.fill(barX, y + 3, barX + barW, y + 7, VanillaUi.SLOT_SHADOW);
-            g.fill(barX, y + 3, barX + Math.round(barW * pct), y + 7, capacityColor(pct));
-            g.text(this.font, capacityText(bag), x + 20, y + 10, 0xFFE0E0E0);
+            VanillaUi.progressBar(g, barX, y + 3, barW, pct, capacityColor(pct));
+            VanillaUi.text(g, this.font, capacityText(bag), x + 20, y + 10, VanillaUi.TEXT_DIM);
             if (hover) {
                 // 原版 bundle 预览组件白嫖：自带内容网格和选中高亮
                 g.setTooltipForNextFrame(this.font, bagTooltip(bag, ordinal),
@@ -391,12 +379,6 @@ public final class UnifiedBagScreen extends Screen {
             VanillaUi.scrollbar(g, bagScrollBar.trackX, bagScrollBar.trackY, bagScrollBar.trackH,
                     bagScrollBar.thumbY, bagScrollBar.thumbH);
         }
-        if (this.bags.size() > this.sidebarVisibleRows) {
-            Component pageInfo = Component.translatable("gui.routinebags.bag_page",
-                    this.bagScroll + 1, Math.min(this.bagScroll + shown, this.bags.size()), this.bags.size());
-            g.text(this.font, pageInfo, this.sidebarRect.x + 2,
-                    this.sidebarRect.y + this.sidebarVisibleRows * SIDEBAR_ROW_H + 1, VanillaUi.TEXT_DIM);
-        }
         int usedUnits = 0;
         int totalUnits = 0;
         for (BagView bag : this.bags) {
@@ -405,9 +387,22 @@ public final class UnifiedBagScreen extends Screen {
                 totalUnits += BagView.DISPLAY_UNITS;
             }
         }
-        if (totalUnits > 0) {
-            g.text(this.font, Component.translatable("gui.routinebags.capacity_units", usedUnits, totalUnits),
-                    this.sidebarRect.x + 2, this.sidebarRect.y + this.gridH - 10, VanillaUi.TEXT);
+        if (!this.bags.isEmpty()) {
+            Component footer;
+            if (this.bags.size() > this.sidebarVisibleRows && totalUnits > 0) {
+                footer = Component.translatable("gui.routinebags.bag_footer",
+                        this.bagScroll + 1, Math.min(this.bagScroll + shown, this.bags.size()), this.bags.size(),
+                        usedUnits, totalUnits);
+            } else if (this.bags.size() > this.sidebarVisibleRows) {
+                footer = Component.translatable("gui.routinebags.bag_footer_page",
+                        this.bagScroll + 1, Math.min(this.bagScroll + shown, this.bags.size()), this.bags.size());
+            } else if (totalUnits > 0) {
+                footer = Component.translatable("gui.routinebags.bag_footer_capacity", usedUnits, totalUnits);
+            } else {
+                footer = Component.empty();
+            }
+            VanillaUi.text(g, this.font, footer, this.sidebarRect.x + 2,
+                    this.sidebarRect.y + this.gridH - 9, VanillaUi.TEXT_DIM);
         }
     }
 
@@ -473,7 +468,7 @@ public final class UnifiedBagScreen extends Screen {
     private void drawButton(GuiGraphicsExtractor g, Rect r, Component label, int mouseX, int mouseY, boolean enabled) {
         boolean hover = enabled && r.contains(mouseX, mouseY);
         VanillaUi.button(g, r.x, r.y, r.w, r.h, hover, enabled);
-        g.centeredText(this.font, label, r.x + r.w / 2, r.y + (r.h - 8) / 2,
+        VanillaUi.centeredText(g, this.font, label, r.x + r.w / 2, r.y + (r.h - 8) / 2,
                 VanillaUi.buttonText(hover, enabled));
     }
 
@@ -521,7 +516,7 @@ public final class UnifiedBagScreen extends Screen {
     }
 
     private void drawSection(GuiGraphicsExtractor g, int x, int y, int w, int h, Component title) {
-        g.text(this.font, title, x + 4, y + 2, VanillaUi.TEXT);
+        VanillaUi.text(g, this.font, title, x + 4, y + 2, VanillaUi.TEXT);
     }
 
     private void drawCell(GuiGraphicsExtractor g, int x, int y) {
@@ -530,25 +525,51 @@ public final class UnifiedBagScreen extends Screen {
 
     private void drawStatus(GuiGraphicsExtractor g) {
         int y = this.top + this.imgH - 12;
-        if (this.status != null) {
-            g.text(this.font, this.status, this.left + PAD, y, VanillaUi.STATUS);
-        }
+        Component filterNote = null;
+        int filterWidth = 0;
         if (this.bagFilter >= 0 && this.bagFilter < this.bags.size()) {
-            Component filterNote = Component.translatable("gui.routinebags.filter_bag", "#" + (this.bagFilter + 1));
-            g.text(this.font, filterNote, this.left + IMG_W - PAD - this.font.width(filterNote), y, VanillaUi.TEXT_DIM);
+            filterNote = Component.translatable("gui.routinebags.filter_bag", "#" + (this.bagFilter + 1));
+            filterWidth = this.font.width(filterNote);
+            VanillaUi.text(g, this.font, filterNote, this.left + IMG_W - PAD - filterWidth, y, VanillaUi.TEXT_DIM);
         }
+        Component leftText = this.status != null ? this.status : summaryText();
+        int maxWidth = IMG_W - PAD * 2 - (filterNote == null ? 0 : filterWidth + 8);
+        VanillaUi.text(g, this.font, fitText(leftText, maxWidth), this.left + PAD, y,
+                this.status != null ? VanillaUi.STATUS : VanillaUi.TEXT_DIM);
+    }
+
+    private Component summaryText() {
+        int totalStacks = 0;
+        for (Entry entry : this.entries) {
+            totalStacks += entry.sources.size();
+        }
+        return Component.translatable("gui.routinebags.summary",
+                this.visible.size(), this.entries.size(), this.bags.size(), totalStacks);
     }
 
     private void drawModeBadge(GuiGraphicsExtractor g, int mouseX, int mouseY) {
         Component label = ServerBridge.modeLabel();
-        int w = this.font.width(label) + 10;
-        int x = this.left + IMG_W - PAD - w;
-        int y = this.top + this.imgH - 27;
-        boolean hover = mouseX >= x && mouseX < x + w && mouseY >= y && mouseY < y + 12;
-        g.text(this.font, label, x + 5, y + 2, hover ? VanillaUi.STATUS : VanillaUi.TEXT_DIM);
+        int x = this.sidebarRect.x + 2;
+        int y = this.modeBtn.y + this.modeBtn.h + 5;
+        int w = Math.min(SIDEBAR_W - 2, this.font.width(label) + 8);
+        boolean hover = mouseX >= x && mouseX < x + w && mouseY >= y && mouseY < y + 11;
+        g.fill(x, y + 3, x + 3, y + 6, hover ? VanillaUi.STATUS : VanillaUi.TEXT_DIM);
+        VanillaUi.text(g, this.font, label, x + 7, y, hover ? VanillaUi.STATUS : VanillaUi.TEXT_DIM);
         if (hover) {
             g.setComponentTooltipForNextFrame(this.font, List.of(ServerBridge.providerTooltip()), mouseX, mouseY);
         }
+    }
+
+    private Component fitText(Component text, int maxWidth) {
+        if (maxWidth <= 0) {
+            return Component.empty();
+        }
+        if (this.font.width(text) <= maxWidth) {
+            return text;
+        }
+        String suffix = "…";
+        return Component.literal(this.font.plainSubstrByWidth(text.getString(),
+                Math.max(0, maxWidth - this.font.width(suffix))) + suffix);
     }
 
     private void drawCarried(GuiGraphicsExtractor g, int mouseX, int mouseY) {
@@ -892,9 +913,10 @@ public final class UnifiedBagScreen extends Screen {
             return null;
         }
         int trackX = this.sidebarRect.x + SIDEBAR_W - VanillaUi.SCROLLBAR_W;
-        int thumbH = VanillaUi.thumbHeight(this.gridH, this.sidebarVisibleRows, this.bags.size());
-        int thumbY = VanillaUi.thumbY(this.sidebarRect.y, this.gridH, thumbH, this.bagScroll, maxScroll);
-        return new ScrollMetrics(trackX, this.sidebarRect.y, this.gridH, thumbY, thumbH, maxScroll);
+        int trackH = this.sidebarVisibleRows * SIDEBAR_ROW_H - 2;
+        int thumbH = VanillaUi.thumbHeight(trackH, this.sidebarVisibleRows, this.bags.size());
+        int thumbY = VanillaUi.thumbY(this.sidebarRect.y, trackH, thumbH, this.bagScroll, maxScroll);
+        return new ScrollMetrics(trackX, this.sidebarRect.y, trackH, thumbY, thumbH, maxScroll);
     }
 
     private record ScrollMetrics(int trackX, int trackY, int trackH, int thumbY, int thumbH, int maxScroll) {

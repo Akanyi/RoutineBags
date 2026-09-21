@@ -245,7 +245,7 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
             return;
         }
         VanillaUi.panel(g, this.x, this.y, W, this.h);
-        g.text(this.minecraft.font, Component.translatable("gui.routinebags.mount.title"),
+        VanillaUi.text(g, this.minecraft.font, Component.translatable("gui.routinebags.mount.title"),
                 this.x + PAD, this.y + 5, VanillaUi.TEXT);
         drawCloseButton(g, mouseX, mouseY);
 
@@ -259,7 +259,7 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
         VanillaUi.button(g, this.tabRect.x, this.tabRect.y, this.tabRect.w, this.tabRect.h,
                 hover || this.open, true);
         Component label = this.open ? Component.literal("<") : Component.translatable("gui.routinebags.mount.tab");
-        g.centeredText(this.minecraft.font, label, this.tabRect.x + this.tabRect.w / 2,
+        VanillaUi.centeredText(g, this.minecraft.font, label, this.tabRect.x + this.tabRect.w / 2,
                 this.tabRect.y + 5, VanillaUi.buttonText(hover || this.open, true));
         if (!this.statusBadgeText().isEmpty()) {
             g.fill(this.tabRect.x + this.tabRect.w - 5, this.tabRect.y + 2,
@@ -279,7 +279,7 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
     private void drawCloseButton(GuiGraphicsExtractor g, int mouseX, int mouseY) {
         boolean hover = this.closeBtn.contains(mouseX, mouseY);
         VanillaUi.button(g, this.closeBtn.x, this.closeBtn.y, this.closeBtn.w, this.closeBtn.h, hover, true);
-        g.centeredText(this.minecraft.font, Component.literal("x"), this.closeBtn.x + this.closeBtn.w / 2,
+        VanillaUi.centeredText(g, this.minecraft.font, Component.literal("×"), this.closeBtn.x + this.closeBtn.w / 2,
                 this.closeBtn.y + 2, VanillaUi.buttonText(hover, true));
         if (hover) {
             g.setComponentTooltipForNextFrame(this.minecraft.font, List.of(Component.translatable("gui.routinebags.mount.tooltip_collapse")), mouseX, mouseY);
@@ -295,17 +295,17 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
             }
         }
         if (!InvOps.hasReachablePlayerInventory()) {
-            g.centeredText(this.minecraft.font, Component.translatable("gui.routinebags.mount.unavailable"),
+            VanillaUi.centeredText(g, this.minecraft.font, Component.translatable("gui.routinebags.mount.unavailable"),
                     this.gridRect.x + GRID_W / 2, this.gridRect.y + this.gridH / 2 - 4, VanillaUi.TEXT_DIM);
             return;
         }
         if (this.bags.isEmpty()) {
-            g.centeredText(this.minecraft.font, Component.translatable("gui.routinebags.no_bags"),
+            VanillaUi.centeredText(g, this.minecraft.font, Component.translatable("gui.routinebags.no_bags"),
                     this.gridRect.x + GRID_W / 2, this.gridRect.y + this.gridH / 2 - 4, VanillaUi.TEXT_DIM);
             return;
         }
         if (this.visible.isEmpty()) {
-            g.centeredText(this.minecraft.font, Component.translatable("gui.routinebags.no_items"),
+            VanillaUi.centeredText(g, this.minecraft.font, Component.translatable("gui.routinebags.no_items"),
                     this.gridRect.x + GRID_W / 2, this.gridRect.y + this.gridH / 2 - 4, VanillaUi.TEXT_DIM);
         }
         Entry hovered = null;
@@ -377,7 +377,7 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
                 && !ServerBridge.hasOperationInFlight();
         VanillaUi.button(g, this.openBtn.x, this.openBtn.y, this.openBtn.w, this.openBtn.h,
                 openHover && canOpenFull, canOpenFull);
-        g.centeredText(this.minecraft.font, Component.translatable("gui.routinebags.mount.open_full"),
+        VanillaUi.centeredText(g, this.minecraft.font, Component.translatable("gui.routinebags.mount.open_full"),
                 this.openBtn.x + this.openBtn.w / 2, this.openBtn.y + 2,
                 VanillaUi.buttonText(openHover && canOpenFull, canOpenFull));
         if (this.sortBtn.contains(mouseX, mouseY)) {
@@ -395,17 +395,17 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
 
     private Component compactModeLabel() {
         return switch (this.sortMode) {
-            case BY_CREATIVE -> Component.literal("CRE");
-            case BY_ID -> Component.literal("ID");
-            case BY_NAME -> Component.literal("AZ");
-            case BY_COUNT -> Component.literal("#");
+            case BY_CREATIVE -> Component.translatable("gui.routinebags.sort_mode.short.creative");
+            case BY_ID -> Component.translatable("gui.routinebags.sort_mode.short.id");
+            case BY_NAME -> Component.translatable("gui.routinebags.sort_mode.short.name");
+            case BY_COUNT -> Component.translatable("gui.routinebags.sort_mode.short.count");
         };
     }
 
     private void drawButton(GuiGraphicsExtractor g, Rect r, Component label, int mouseX, int mouseY, boolean enabled) {
         boolean hover = enabled && r.contains(mouseX, mouseY);
         VanillaUi.button(g, r.x, r.y, r.w, r.h, hover, enabled);
-        g.centeredText(this.minecraft.font, label, r.x + r.w / 2, r.y + (r.h - 8) / 2,
+        VanillaUi.centeredText(g, this.minecraft.font, label, r.x + r.w / 2, r.y + (r.h - 8) / 2,
                 VanillaUi.buttonText(hover, enabled));
     }
 
@@ -421,12 +421,12 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
             visibleText = Component.literal(this.minecraft.font.plainSubstrByWidth(text.getString(),
                     GRID_W - this.minecraft.font.width(suffix)) + suffix);
         }
-        g.text(this.minecraft.font, visibleText, this.x + PAD, y,
+        VanillaUi.text(g, this.minecraft.font, visibleText, this.x + PAD, y,
                 this.status == null ? VanillaUi.TEXT_DIM : VanillaUi.STATUS);
     }
 
     private void drawSection(GuiGraphicsExtractor g, int x, int y, int w, int h, Component title) {
-        g.text(this.minecraft.font, title, x + 4, y + 1, VanillaUi.TEXT);
+        VanillaUi.text(g, this.minecraft.font, title, x + 4, y + 1, VanillaUi.TEXT);
     }
 
     private void drawCell(GuiGraphicsExtractor g, int x, int y) {
