@@ -5,6 +5,7 @@ import java.lang.reflect.Field;
 import dev.lans.routinebags.ClientConfig;
 import dev.lans.routinebags.mixin.client.AbstractContainerScreenAccessor;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.gui.screens.inventory.AbstractRecipeBookScreen;
 import net.minecraft.client.gui.screens.inventory.CreativeModeInventoryScreen;
@@ -65,13 +66,12 @@ public final class ContainerMounts {
     }
 
     public static boolean keyPressed(AbstractContainerScreen<?> screen, MountedBagPanel panel, KeyEvent event) {
-        if (panel == null || !panel.isLayoutAvailable() || recipeBookVisible(screen)
-                || !Keybinds.OPEN_UNIFIED.get().matches(event)) {
+        if (panel == null) {
             return false;
         }
-        panel.toggleOpen();
         layout(screen, panel);
-        return true;
+        panel.setSuppressed(recipeBookVisible(screen));
+        return panel.handleToggleKey(event.key(), event.scancode(), event.modifiers());
     }
 
     public static void cleanup(MountedBagPanel panel) {
@@ -85,6 +85,11 @@ public final class ContainerMounts {
 
     public static boolean hasActiveOperation(AbstractContainerMenu menu) {
         return activePanel != null && activePanel.isMountedTo(menu) && activePanel.hasActiveOperation();
+    }
+
+    public static boolean isMouseOver(Screen screen, double x, double y) {
+        return screen instanceof AbstractContainerScreen<?> container && activePanel != null
+                && activePanel.isMountedTo(container.getMenu()) && activePanel.isMouseOver(x, y);
     }
 
     private static void layout(AbstractContainerScreen<?> screen, MountedBagPanel panel) {

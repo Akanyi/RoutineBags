@@ -42,12 +42,34 @@ public final class ClientConfig {
             .translation("routinebags.configuration.mountedPanelOpenByDefault")
             .define("mountedPanelOpenByDefault", false);
 
+    public static final ModConfigSpec.BooleanValue MOUNTED_PANEL_HIDDEN = BUILDER
+            .translation("routinebags.configuration.mountedPanelHidden")
+            .define("mountedPanelHidden", false);
+    public static final ModConfigSpec.IntValue MOUNTED_PANEL_X = position("mountedPanelX");
+    public static final ModConfigSpec.IntValue MOUNTED_PANEL_Y = position("mountedPanelY");
+    public static final ModConfigSpec.IntValue MOUNTED_BUTTON_X = position("mountedButtonX");
+    public static final ModConfigSpec.IntValue MOUNTED_BUTTON_Y = position("mountedButtonY");
+
     public static final ModConfigSpec.EnumValue<SortMode> SORT_MODE = BUILDER
             .comment("Default ordering of the unified view and of sorted bundles.")
             .translation("routinebags.configuration.sortMode")
             .defineEnum("sortMode", SortMode.BY_ID);
 
     public static final ModConfigSpec SPEC = BUILDER.build();
+
+    private static ModConfigSpec.IntValue position(String name) {
+        return BUILDER.comment("Relative screen position (0..10000); -1 uses automatic placement.")
+                .translation("routinebags.configuration." + name).defineInRange(name, -1, -1, 10000);
+    }
+
+    public static void saveMountedLayout(int panelX, int panelY, int buttonX, int buttonY, boolean hidden) {
+        MOUNTED_PANEL_X.set(panelX);
+        MOUNTED_PANEL_Y.set(panelY);
+        MOUNTED_BUTTON_X.set(buttonX);
+        MOUNTED_BUTTON_Y.set(buttonY);
+        MOUNTED_PANEL_HIDDEN.set(hidden);
+        SPEC.save();
+    }
 
     private ClientConfig() {}
 }

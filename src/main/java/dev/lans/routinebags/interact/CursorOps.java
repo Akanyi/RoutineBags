@@ -5,6 +5,7 @@ import java.util.List;
 import dev.lans.routinebags.bag.BagKind;
 import dev.lans.routinebags.bag.BagScanner;
 import dev.lans.routinebags.bag.BagView;
+import dev.lans.routinebags.bag.MoBundleCompat;
 import dev.lans.routinebags.merge.ItemKey;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
@@ -74,7 +75,8 @@ public final class CursorOps {
             int bestHave = -1;
             for (BagView bag : bags) {
                 int have = countOf(bag, key);
-                int reach = Math.min(need, have + bag.maxInsertable(key.proto()));
+                int reach = Math.min(need, have + ("COMPRESSION".equals(MoBundleCompat.specialization(bag.bagStack))
+                        ? 0 : bag.maxInsertable(key.proto())));
                 if (reach > bestReach || (reach == bestReach && have > bestHave)) {
                     bestReach = reach;
                     bestHave = have;
@@ -98,7 +100,8 @@ public final class CursorOps {
             // 同袋碎片：第一条目不够数就先并条目，否则右键只取得到第一条的量
             int firstIdx = firstEntryIdx(best, key);
             int firstCount = firstIdx >= 0 ? best.entries.get(firstIdx).getCount() : 0;
-            if (firstCount < Math.min(bestCount, need) && nextEntryIdx(best, key, firstIdx) != -1) {
+            if (MoBundleCompat.canCompact(best.bagStack) && firstCount < Math.min(bestCount, need)
+                    && nextEntryIdx(best, key, firstIdx) != -1) {
                 Moves.bundleToBundle(r, best.menuSlot, nextEntryIdx(best, key, firstIdx), key, best.menuSlot);
                 r.enqueue(collectStep(r, key, half, staging, gather, rounds - 1, finishToInventory));
                 return true;
@@ -404,6 +407,10 @@ public final class CursorOps {
             if (bag.menuSlot == best.menuSlot) {
                 continue;
             }
+            // 凑组也只在同专精间归并；其他来源直接取到中转槽，避免触发压缩或混入共享端口。
+            if (!java.util.Objects.equals(MoBundleCompat.specialization(bag.bagStack),
+                    MoBundleCompat.specialization(best.bagStack))
+                    || !MoBundleCompat.canCompact(bag.bagStack) || !MoBundleCompat.canCompact(best.bagStack)) continue;
             int count = countOf(bag, key);
             if (count > 0 && count < srcCount) {
                 srcCount = count;

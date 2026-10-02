@@ -35,16 +35,28 @@ public final class BagScanner {
         return invIndex < Inventory.SELECTION_SIZE ? InventoryMenu.USE_ROW_SLOT_START + invIndex : invIndex;
     }
 
-    private static void recognize(List<BagView> out, ItemStack stack, int invIndex, int menuSlot, boolean includeReadOnly) {
+    static void recognize(List<BagView> out, ItemStack stack, int invIndex, int menuSlot, boolean includeReadOnly) {
         if (stack.isEmpty()) {
             return;
         }
-        BundleContents bundle = stack.get(DataComponents.BUNDLE_CONTENTS);
+        if (!MoBundleCompat.supportsItems(stack)) return;
+        BundleContents bundle = MoBundleCompat.contents(stack);
         if (bundle != null) {
             // 点击覆写只在 count==1 时生效（BundleItem 的硬性前提），非 1 的按只读处理
             boolean mutable = stack.getCount() == 1;
             if (!mutable && !includeReadOnly) {
                 return;
+            }
+            String channel = MoBundleCompat.sharedChannel(stack);
+            if (channel != null) {
+                for (int index = 0; index < out.size(); index++) {
+                    BagView existing = out.get(index);
+                    if (!channel.equals(MoBundleCompat.sharedChannel(existing.bagStack))) continue;
+                    // 可写端口优先；不能让一个堆叠只读端口遮掉同频道可操作的袋子。
+                    if (existing.mutable || !mutable) return;
+                    out.remove(index);
+                    break;
+                }
             }
             out.add(new BagView(invIndex, menuSlot, stack.copy(), BagKind.BUNDLE, mutable,
                     bundle.itemCopyStream().toList(), BagView.weightSafe(bundle), bundle.size(), -1));
@@ -62,6 +74,13 @@ public final class BagScanner {
             out.add(new BagView(invIndex, menuSlot, stack.copy(), BagKind.CONTAINER, false,
                     entries, org.apache.commons.lang3.math.Fraction.ZERO, entries.size(), shulkerLike ? 27 : -1));
         }
+    }
+
+    public static boolean hasSpecializedBags(LocalPlayer player) {
+        for (ItemStack stack : player.getInventory()) {
+            if (MoBundleCompat.isSpecialized(stack)) return true;
+        }
+        return false;
     }
 
     private BagScanner() {}

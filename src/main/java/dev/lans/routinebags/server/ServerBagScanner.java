@@ -5,6 +5,7 @@ import java.util.List;
 
 import dev.lans.routinebags.bag.BagKind;
 import dev.lans.routinebags.bag.BagView;
+import dev.lans.routinebags.bag.MoBundleCompat;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Inventory;
@@ -44,7 +45,7 @@ public final class ServerBagScanner {
     }
 
     private static void recognize(List<BagView> out, ItemStack stack, int invIndex, int menuSlot) {
-        if (stack.isEmpty() || stack.getCount() != 1) {
+        if (stack.isEmpty() || stack.getCount() != 1 || MoBundleCompat.isSpecialized(stack)) {
             return;
         }
         BundleContents bundle = stack.get(DataComponents.BUNDLE_CONTENTS);

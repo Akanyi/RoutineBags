@@ -23,6 +23,9 @@ repositories {
 }
 
 dependencies {
+    if (providers.gradleProperty('testMoBundle').isPresent()) {
+        runtimeOnly files(providers.gradleProperty('testMoBundle').get())
+    }
     runtimeOnly("com.ptsmods:devlogin:3.5.1:neoforge") {
         // DevLogin can fall back to Java's built-in HTTP client. Keeping async-http-client
         // pulls a newer Netty line that fights Minecraft's strictly pinned Netty modules.

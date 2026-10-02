@@ -2,16 +2,13 @@ package dev.lans.routinebags.client;
 
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.Font;
+import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
 import net.minecraft.util.Mth;
 
 final class VanillaUi {
     static final int PANEL = 0xFFC6C6C6;
-    static final int PANEL_HIGHLIGHT = 0xFFFFFFFF;
-    static final int PANEL_SHADOW = 0xFF555555;
-    static final int SLOT = 0xFF8B8B8B;
-    static final int SLOT_SHADOW = 0xFF373737;
-    static final int SLOT_HOVER = 0x80FFFFFF;
     static final int TEXT = 0xFF404040;
     static final int TEXT_DIM = 0xFF606060;
     static final int TEXT_LIGHT = 0xFFFFFFFF;
@@ -19,16 +16,21 @@ final class VanillaUi {
     static final int TEXT_HOVER = 0xFFFFFFA0;
     static final int STATUS = 0xFF9A6A00;
     static final int DANGER = 0xFFB03030;
-    static final int BUTTON = 0xFF6A6A6A;
-    static final int BUTTON_HOVER = 0xFF7E7E7E;
-    static final int BUTTON_DISABLED = 0xFF5A5A5A;
-    static final int LIST = 0xFFB8B8B8;
-    static final int LIST_HOVER = 0xFFD0D0D0;
-    static final int LIST_SELECTED = 0xFFE0E0E0;
-    static final int ACCENT = 0xFFFFFFFF;
-    static final int SCROLLBAR_W = 6;
-    static final int SCROLL_TRACK = 0xFF000000;
-    static final int SCROLL_THUMB = 0xFFC6C6C6;
+    static final int SCROLLBAR_W = 12;
+
+    private static final Identifier PANEL_SPRITE = Identifier.withDefaultNamespace("popup/background");
+    private static final Identifier BUTTON_SPRITE = Identifier.withDefaultNamespace("widget/button");
+    private static final Identifier BUTTON_DISABLED_SPRITE = Identifier.withDefaultNamespace("widget/button_disabled");
+    private static final Identifier BUTTON_HIGHLIGHTED_SPRITE = Identifier.withDefaultNamespace("widget/button_highlighted");
+    private static final Identifier CROSS_BUTTON_SPRITE = Identifier.withDefaultNamespace("widget/cross_button");
+    private static final Identifier CROSS_BUTTON_HIGHLIGHTED_SPRITE = Identifier.withDefaultNamespace("widget/cross_button_highlighted");
+    private static final Identifier SLOT_SPRITE = Identifier.withDefaultNamespace("container/slot");
+    private static final Identifier SLOT_HIGHLIGHT_SPRITE = Identifier.withDefaultNamespace("container/slot_highlight_front");
+    private static final Identifier SCROLLER_BACKGROUND_SPRITE = Identifier.withDefaultNamespace("widget/scroller_background");
+    private static final Identifier CREATIVE_SCROLLER_SPRITE = Identifier.withDefaultNamespace("container/creative_inventory/scroller");
+    private static final Identifier BUNDLE_PROGRESS_BORDER_SPRITE = Identifier.withDefaultNamespace("container/bundle/bundle_progressbar_border");
+    private static final Identifier BUNDLE_PROGRESS_FILL_SPRITE = Identifier.withDefaultNamespace("container/bundle/bundle_progressbar_fill");
+    private static final Identifier BUNDLE_PROGRESS_FULL_SPRITE = Identifier.withDefaultNamespace("container/bundle/bundle_progressbar_full");
 
     private VanillaUi() {
     }
@@ -46,23 +48,13 @@ final class VanillaUi {
     }
 
     static void panel(GuiGraphicsExtractor g, int x, int y, int w, int h) {
-        g.fill(x, y, x + w, y + h, 0xFF000000);
-        g.fill(x + 1, y + 1, x + w - 1, y + h - 1, PANEL);
-        g.fill(x + 1, y + 1, x + w - 2, y + 2, PANEL_HIGHLIGHT);
-        g.fill(x + 1, y + 1, x + 2, y + h - 2, PANEL_HIGHLIGHT);
-        g.fill(x + 1, y + h - 2, x + w - 1, y + h - 1, PANEL_SHADOW);
-        g.fill(x + w - 2, y + 1, x + w - 1, y + h - 1, PANEL_SHADOW);
+        g.blitSprite(RenderPipelines.GUI_TEXTURED, PANEL_SPRITE, x, y, w, h);
+        g.fill(x + 5, y + 5, x + w - 5, y + h - 5, PANEL);
     }
 
     static void button(GuiGraphicsExtractor g, int x, int y, int w, int h, boolean hover, boolean enabled) {
-        int fill = enabled ? (hover ? BUTTON_HOVER : BUTTON) : BUTTON_DISABLED;
-        int highlight = enabled && hover ? PANEL_HIGHLIGHT : TEXT_DISABLED;
-        g.fill(x, y, x + w, y + h, 0xFF000000);
-        g.fill(x + 1, y + 1, x + w - 1, y + h - 1, fill);
-        g.fill(x + 1, y + 1, x + w - 2, y + 2, highlight);
-        g.fill(x + 1, y + 1, x + 2, y + h - 2, highlight);
-        g.fill(x + 1, y + h - 2, x + w - 1, y + h - 1, SLOT_SHADOW);
-        g.fill(x + w - 2, y + 1, x + w - 1, y + h - 1, SLOT_SHADOW);
+        Identifier sprite = enabled ? (hover ? BUTTON_HIGHLIGHTED_SPRITE : BUTTON_SPRITE) : BUTTON_DISABLED_SPRITE;
+        g.blitSprite(RenderPipelines.GUI_TEXTURED, sprite, x, y, w, h);
     }
 
     static int buttonText(boolean hover, boolean enabled) {
@@ -72,53 +64,42 @@ final class VanillaUi {
         return hover ? TEXT_HOVER : TEXT_LIGHT;
     }
 
-    /** A compact, container-style row rather than a dark menu button. */
     static void listRow(GuiGraphicsExtractor g, int x, int y, int w, int h, boolean hover, boolean selected) {
-        int fill = selected ? LIST_SELECTED : (hover ? LIST_HOVER : LIST);
-        g.fill(x, y, x + w, y + h, SLOT_SHADOW);
-        g.fill(x + 1, y + 1, x + w, y + h, PANEL_HIGHLIGHT);
-        g.fill(x + 1, y + 1, x + w - 1, y + h - 1, fill);
-        if (selected) {
-            g.fill(x + 1, y + 1, x + 3, y + h - 1, ACCENT);
-        }
+        button(g, x, y, w, h, hover || selected, true);
     }
 
-    static void progressBar(GuiGraphicsExtractor g, int x, int y, int w, float progress, int color) {
-        g.fill(x, y, x + w, y + 4, SLOT_SHADOW);
-        g.fill(x + 1, y + 1, x + w - 1, y + 3, SLOT);
+    static void progressBar(GuiGraphicsExtractor g, int x, int y, int w, float progress) {
         int filled = Math.round(Math.max(0, w - 2) * Mth.clamp(progress, 0.0F, 1.0F));
         if (filled > 0) {
-            g.fill(x + 1, y + 1, x + 1 + filled, y + 3, color);
+            Identifier fill = progress >= 0.999F ? BUNDLE_PROGRESS_FULL_SPRITE : BUNDLE_PROGRESS_FILL_SPRITE;
+            g.blitSprite(RenderPipelines.GUI_TEXTURED, fill, x + 1, y, filled, 6);
         }
+        g.blitSprite(RenderPipelines.GUI_TEXTURED, BUNDLE_PROGRESS_BORDER_SPRITE, x, y, w, 6);
     }
 
     static void slot(GuiGraphicsExtractor g, int x, int y, int size) {
-        g.fill(x, y, x + size, y + size, PANEL);
-        g.fill(x, y, x + size - 1, y + size - 1, SLOT_SHADOW);
-        g.fill(x + 1, y + 1, x + size - 1, y + size - 1, SLOT);
-        g.fill(x + 1, y + size - 1, x + size, y + size, PANEL_HIGHLIGHT);
-        g.fill(x + size - 1, y + 1, x + size, y + size, PANEL_HIGHLIGHT);
+        g.blitSprite(RenderPipelines.GUI_TEXTURED, SLOT_SPRITE, x, y, size, size);
     }
 
     static void slotHover(GuiGraphicsExtractor g, int x, int y, int size) {
-        g.fill(x + 1, y + 1, x + size - 1, y + size - 1, SLOT_HOVER);
+        g.blitSprite(RenderPipelines.GUI_TEXTURED, SLOT_HIGHLIGHT_SPRITE, x, y, size, size);
     }
 
     static void scrollbar(GuiGraphicsExtractor g, int x, int y, int h, int thumbY, int thumbH) {
-        g.fill(x, y, x + SCROLLBAR_W, y + h, SCROLL_TRACK);
-        g.fill(x + 1, y, x + SCROLLBAR_W - 1, y + h, SLOT_SHADOW);
-        g.fill(x, thumbY, x + SCROLLBAR_W, thumbY + thumbH, SCROLL_THUMB);
-        g.fill(x, thumbY, x + SCROLLBAR_W - 1, thumbY + 1, PANEL_HIGHLIGHT);
-        g.fill(x, thumbY, x + 1, thumbY + thumbH - 1, PANEL_HIGHLIGHT);
-        g.fill(x + 1, thumbY + thumbH - 1, x + SCROLLBAR_W, thumbY + thumbH, PANEL_SHADOW);
-        g.fill(x + SCROLLBAR_W - 1, thumbY + 1, x + SCROLLBAR_W, thumbY + thumbH, PANEL_SHADOW);
+        g.blitSprite(RenderPipelines.GUI_TEXTURED, SCROLLER_BACKGROUND_SPRITE, x, y, SCROLLBAR_W, h);
+        g.blitSprite(RenderPipelines.GUI_TEXTURED, CREATIVE_SCROLLER_SPRITE, x, thumbY, SCROLLBAR_W, thumbH);
+    }
+
+    static void crossButton(GuiGraphicsExtractor g, int x, int y, int size, boolean hover) {
+        g.blitSprite(RenderPipelines.GUI_TEXTURED,
+                hover ? CROSS_BUTTON_HIGHLIGHTED_SPRITE : CROSS_BUTTON_SPRITE, x, y, size, size);
     }
 
     static int thumbHeight(int trackH, int visibleRows, int totalRows) {
         if (totalRows <= visibleRows || trackH <= 0) {
             return trackH;
         }
-        return Math.max(8, trackH * visibleRows / totalRows);
+        return Math.min(15, trackH);
     }
 
     static int thumbY(int trackY, int trackH, int thumbH, int scrollRow, int maxScroll) {

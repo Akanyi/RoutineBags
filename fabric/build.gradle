@@ -24,6 +24,7 @@ def platformSources = [
         'dev/lans/routinebags/client/ContainerMounts.java',
         'dev/lans/routinebags/client/Keybinds.java',
         'dev/lans/routinebags/client/ServerBridge.java',
+        'dev/lans/routinebags/mixin/client/MoBundleStorageScreenMixin.java',
         'dev/lans/routinebags/network/RoutineBagsNetwork.java',
         'dev/lans/routinebags/network/ServerConnectionEvents.java'
 ] as Set

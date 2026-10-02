@@ -36,6 +36,8 @@ public final class ContainerMounts {
         if (!(event.getScreen() instanceof AbstractContainerScreen<?> containerScreen) || isUnsupported(containerScreen)) {
             return;
         }
+        MountedBagPanel previous = PANELS.remove(containerScreen);
+        if (previous != null) previous.cleanup();
         MountedBagPanel panel = new MountedBagPanel(containerScreen.getMenu());
         PANELS.put(containerScreen, panel);
         layoutPanel(containerScreen, panel);
@@ -48,6 +50,7 @@ public final class ContainerMounts {
         AbstractContainerScreen<?> screen = event.getContainerScreen();
         MountedBagPanel panel = PANELS.get(screen);
         if (panel != null) {
+            layoutPanel(screen, panel);
             panel.setSuppressed(recipeBookVisible(screen));
             int left = intField(screen, LEFT_POS, 0);
             int top = intField(screen, TOP_POS, 0);
@@ -69,14 +72,37 @@ public final class ContainerMounts {
     @SubscribeEvent
     static void onKeyPressed(ScreenEvent.KeyPressed.Pre event) {
         MountedBagPanel panel = PANELS.get(event.getScreen());
-        if (panel != null && panel.isLayoutAvailable() && !recipeBookVisible(event.getScreen())
-                && panel.matchesToggleKey(event.getKeyCode(), event.getScanCode(), event.getModifiers())) {
-            panel.toggleOpen();
-            if (event.getScreen() instanceof AbstractContainerScreen<?> containerScreen) {
-                layoutPanel(containerScreen, panel);
-            }
+        if (panel != null) {
+            panel.setSuppressed(recipeBookVisible(event.getScreen()));
+        }
+        if (panel != null && panel.handleToggleKey(event.getKeyCode(), event.getScanCode(), event.getModifiers())) {
             event.setCanceled(true);
         }
+    }
+
+    @SubscribeEvent
+    static void onMousePressed(ScreenEvent.MouseButtonPressed.Pre event) {
+        MountedBagPanel panel = PANELS.get(event.getScreen());
+        if (panel != null) {
+            panel.setSuppressed(recipeBookVisible(event.getScreen()));
+            if (panel.mouseClicked(event.getMouseButtonEvent(), event.isDoubleClick())) event.setCanceled(true);
+        }
+    }
+
+    @SubscribeEvent
+    static void onMouseScrolled(ScreenEvent.MouseScrolled.Pre event) {
+        if (mouseScrolled(event.getScreen(), event.getMouseX(), event.getMouseY(),
+                event.getScrollDeltaX(), event.getScrollDeltaY())) event.setCanceled(true);
+    }
+
+    public static boolean mouseScrolled(Screen screen, double x, double y, double scrollX, double scrollY) {
+        MountedBagPanel panel = PANELS.get(screen);
+        return panel != null && panel.mouseScrolled(x, y, scrollX, scrollY);
+    }
+
+    public static boolean isMouseOver(Screen screen, double x, double y) {
+        MountedBagPanel panel = PANELS.get(screen);
+        return panel != null && panel.isMouseOver(x, y);
     }
 
     @SubscribeEvent

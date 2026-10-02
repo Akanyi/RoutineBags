@@ -1,6 +1,7 @@
 package dev.lans.routinebags.client;
 
 import dev.lans.routinebags.SortMode;
+import dev.lans.routinebags.bag.BagScanner;
 import dev.lans.routinebags.interact.InvOps;
 import dev.lans.routinebags.network.ItemIdentity;
 import dev.lans.routinebags.network.RoutineBagsNetwork;
@@ -76,18 +77,23 @@ public final class ServerBridge {
 
     public static boolean canSortOnServer() {
         refresh();
-        return available && serverSort;
+        return available && serverSort && !requiresNativeClicks();
     }
 
     public static boolean canStoreOnServer() {
         refresh();
-        return available && serverStore && connection != null
+        return available && serverStore && !requiresNativeClicks() && connection != null
                 && NetworkRegistry.hasChannel(connection, RoutineBagsNetwork.STORE_REQUEST_V3_ID);
     }
 
     public static boolean canTakeOnServer() {
         refresh();
-        return connection != null && NetworkRegistry.hasChannel(connection, RoutineBagsNetwork.TAKE_REQUEST_ID);
+        return !requiresNativeClicks() && connection != null && NetworkRegistry.hasChannel(connection, RoutineBagsNetwork.TAKE_REQUEST_ID);
+    }
+
+    private static boolean requiresNativeClicks() {
+        var player = Minecraft.getInstance().player;
+        return player != null && BagScanner.hasSpecializedBags(player);
     }
 
     public static void requestSort(SortMode mode) {
@@ -226,13 +232,14 @@ public final class ServerBridge {
 
     public static Component modeLabel() {
         refresh();
-        return Component.translatable(available
+        return Component.translatable(available && !requiresNativeClicks()
                 ? "gui.routinebags.mode.server"
                 : "gui.routinebags.mode.client");
     }
 
     public static Component providerTooltip() {
         refresh();
+        if (requiresNativeClicks()) return Component.translatable("gui.routinebags.mode.mobundle_detail");
         if (available) {
             return Component.translatable("gui.routinebags.mode.server_detail", provider);
         }

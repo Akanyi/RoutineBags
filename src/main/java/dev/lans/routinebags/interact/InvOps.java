@@ -1,5 +1,6 @@
 package dev.lans.routinebags.interact;
 
+import dev.lans.routinebags.bag.MoBundleCompat;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.core.component.DataComponents;
@@ -92,7 +93,7 @@ public final class InvOps {
     }
 
     public static @Nullable BundleContents bundleAt(int menuSlot) {
-        return stackAt(menuSlot).get(DataComponents.BUNDLE_CONTENTS);
+        return MoBundleCompat.contents(stackAt(menuSlot));
     }
 
     public static boolean canReachSlot(int menuSlot) {

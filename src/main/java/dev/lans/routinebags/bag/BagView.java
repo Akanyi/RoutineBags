@@ -51,23 +51,32 @@ public final class BagView {
     /** 已用容量（0..1），容器物品按槽位折算，用于容量条渲染 */
     public float fillFraction() {
         if (this.kind == BagKind.BUNDLE) {
+            if (MoBundleCompat.isSpecialized(this.bagStack)) return MoBundleCompat.fullness(this.bagStack);
             return Math.min(this.weightUsed.floatValue(), 1.0F);
         }
         return this.slotCapacity > 0 ? Math.min((float) this.slotsUsed / this.slotCapacity, 1.0F) : 0.0F;
     }
 
     public int usedUnits() {
+        if (MoBundleCompat.isSpecialized(this.bagStack)) return MoBundleCompat.usedCapacity(this.bagStack);
         return Mth.mulAndTruncate(this.weightUsed, DISPLAY_UNITS);
     }
 
-    /**
-     * 指定物品还能塞进多少个。与原版 BundleContents.Mutable#getMaxAmountToAdd
-     * 用同一套 Fraction 运算，保证和服务器判定一字不差。
-     */
+    public int capacityUnits() {
+        return MoBundleCompat.isSpecialized(this.bagStack) ? MoBundleCompat.capacity(this.bagStack) : DISPLAY_UNITS;
+    }
+
+    public boolean usesItemCountCapacity() {
+        String type = MoBundleCompat.specialization(this.bagStack);
+        return "TOOL_BAG".equals(type) || "EMERALD_BAG".equals(type);
+    }
+
+    /** 原版按重量计算，专精袋调用 moBundle 的无写入模拟，避免忽略类型/槽位限制。 */
     public int maxInsertable(ItemStack stack) {
         if (this.kind != BagKind.BUNDLE || !this.mutable || !BundleContents.canItemBeInBundle(stack)) {
             return 0;
         }
+        if (MoBundleCompat.isSpecialized(this.bagStack)) return MoBundleCompat.maxInsertable(this.bagStack, stack);
         Fraction free = Fraction.ONE.subtract(this.weightUsed);
         return Math.max(free.divideBy(unitWeight(stack)).intValue(), 0);
     }

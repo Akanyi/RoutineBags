@@ -18,6 +18,7 @@ import dev.lans.routinebags.SortMode;
 import dev.lans.routinebags.bag.BagKind;
 import dev.lans.routinebags.bag.BagScanner;
 import dev.lans.routinebags.bag.BagView;
+import dev.lans.routinebags.bag.MoBundleCompat;
 import dev.lans.routinebags.interact.InvOps;
 import dev.lans.routinebags.interact.Moves;
 import dev.lans.routinebags.interact.StepRunner;
@@ -26,6 +27,9 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.world.item.ItemStackTemplate;
+import net.minecraft.world.item.component.BundleContents;
 
 /**
  * 整理控制器：策略循环而非预编脚本。每次只从实时状态规划“下一次搬运”，
@@ -37,7 +41,7 @@ import net.minecraft.world.item.ItemStack;
 public final class SortController {
 
     /** 从 src 袋的 entryIdx 条目搬到 dst 袋；src==dst 表示同袋去碎片 */
-    private record Move(BagView src, int entryIdx, ItemKey key, BagView dst) {}
+    record Move(BagView src, int entryIdx, ItemKey key, BagView dst) {}
 
     private boolean active;
     private int moves;
@@ -80,6 +84,7 @@ public final class SortController {
         }
         List<BagView> bundles = BagScanner.scan(player, false).stream()
                 .filter(b -> b.kind == BagKind.BUNDLE && b.mutable)
+                .filter(b -> MoBundleCompat.canCompact(b.bagStack))
                 .filter(b -> InvOps.canReachSlot(b.menuSlot))
                 .toList();
         if (bundles.isEmpty()) {
@@ -95,7 +100,17 @@ public final class SortController {
             finish();
             return;
         }
-        Move move = plan(bundles, mode);
+        Map<String, List<BagView>> groups = new LinkedHashMap<>();
+        for (BagView bag : bundles) {
+            String type = MoBundleCompat.specialization(bag.bagStack);
+            groups.computeIfAbsent(type == null ? "vanilla" : type, ignored -> new ArrayList<>()).add(bag);
+        }
+        Move move = null;
+        for (var group : groups.entrySet()) {
+            move = group.getKey().equals("vanilla") ? plan(group.getValue(), mode)
+                    : planSpecialized(group.getValue(), mode);
+            if (move != null) break;
+        }
         if (move == null) {
             finish();
             return;
@@ -159,15 +174,15 @@ public final class SortController {
         // 若按实时占用每步重排：搬运改变占用 → 排序翻转 → 目标漂移 → 规划陷入循环舞步，
         // 状态查重触发提前"完成"，表现为明明能合并却不动（实测踩过）。
         // 定格规则：占用降序，最满的袋子当聚集地，最空的自然被搬空。
-        if (this.fillRank == null) {
+        if (this.fillRank == null || bundles.stream().anyMatch(bag -> !this.fillRank.containsKey(bag.invIndex))) {
             List<BagView> byWeight = new ArrayList<>(bundles);
             byWeight.sort((a, b) -> {
                 int cmp = b.weightUsed.compareTo(a.weightUsed);
                 return cmp != 0 ? cmp : Integer.compare(a.invIndex, b.invIndex);
             });
-            this.fillRank = new HashMap<>();
+            if (this.fillRank == null) this.fillRank = new HashMap<>();
             for (int r = 0; r < byWeight.size(); r++) {
-                this.fillRank.put(byWeight.get(r).invIndex, r);
+                this.fillRank.putIfAbsent(byWeight.get(r).invIndex, this.fillRank.size());
             }
             RoutineBags.LOGGER.info("[sort] fill order locked: {}",
                     byWeight.stream().map(b -> "slot" + b.menuSlot + "(" + b.usedUnits() + "u)").toList());
@@ -287,8 +302,7 @@ public final class SortController {
                 if (dst.entries.isEmpty()) {
                     continue;
                 }
-                Fraction free = Fraction.ONE.subtract(dst.weightUsed);
-                if (free.compareTo(src.weightUsed) < 0) {
+                if (!canContainAll(dst, src)) {
                     continue;
                 }
                 for (int entryIdx = 0; entryIdx < src.entries.size(); entryIdx++) {
@@ -300,6 +314,99 @@ public final class SortController {
             }
         }
         return null;
+    }
+
+    @Nullable Move planSpecialized(List<BagView> bundles, SortMode mode) {
+        Move compact = planDirectCompaction(bundles);
+        if (compact != null) return compact;
+        Map<ItemKey, Long> totals = new LinkedHashMap<>();
+        for (BagView bag : bundles) {
+            for (ItemStack entry : bag.entries) totals.merge(ItemKey.of(entry), (long) entry.getCount(), Long::sum);
+        }
+        List<ItemKey> keys = new ArrayList<>(totals.keySet());
+        keys.sort(keyComparator(mode, totals));
+        List<BagView> destinations = new ArrayList<>(bundles);
+        if (this.fillRank == null) this.fillRank = new HashMap<>();
+        destinations.sort(Comparator.comparingDouble((BagView bag) -> -bag.fillFraction())
+                .thenComparingInt(bag -> bag.invIndex));
+        for (BagView bag : destinations) this.fillRank.putIfAbsent(bag.invIndex, this.fillRank.size());
+        destinations.sort(Comparator.comparingInt(bag -> this.fillRank.get(bag.invIndex)));
+        Map<Integer, ItemStack> projected = new HashMap<>();
+        Map<Integer, Map<ItemKey, Integer>> target = new HashMap<>();
+        for (BagView bag : destinations) {
+            ItemStack empty = bag.bagStack.copy();
+            empty.set(DataComponents.BUNDLE_CONTENTS, BundleContents.EMPTY);
+            projected.put(bag.invIndex, empty);
+            target.put(bag.invIndex, new HashMap<>());
+        }
+        for (ItemKey key : keys) {
+            long remaining = totals.get(key);
+            for (BagView bag : destinations) {
+                ItemStack projection = projected.get(bag.invIndex);
+                while (remaining > 0) {
+                    int fit = MoBundleCompat.maxInsertable(projection, key.proto());
+                    int amount = (int) Math.min(remaining, Math.min(fit, key.proto().getMaxStackSize()));
+                    if (amount <= 0) break;
+                    appendProjection(projection, key.proto(), amount);
+                    target.get(bag.invIndex).merge(key, amount, Integer::sum);
+                    remaining -= amount;
+                }
+            }
+            if (remaining > 0) return null;
+        }
+        for (BagView source : bundles) {
+            Map<ItemKey, Integer> current = new HashMap<>();
+            for (ItemStack entry : source.entries) current.merge(ItemKey.of(entry), entry.getCount(), Integer::sum);
+            for (int index = 0; index < source.entries.size(); index++) {
+                ItemKey key = ItemKey.of(source.entries.get(index));
+                if (current.get(key) <= target.get(source.invIndex).getOrDefault(key, 0)) continue;
+                for (BagView destination : destinations) {
+                    if (source == destination || destination.maxInsertable(key.proto()) <= 0) continue;
+                    int have = destination.entries.stream().filter(key::matches).mapToInt(ItemStack::getCount).sum();
+                    if (have < target.get(destination.invIndex).getOrDefault(key, 0)) {
+                        return new Move(source, index, key, destination);
+                    }
+                }
+            }
+        }
+        for (BagView bag : bundles) {
+            Map<ItemKey, Integer> partial = new HashMap<>();
+            for (int index = 0; index < bag.entries.size(); index++) {
+                ItemStack entry = bag.entries.get(index);
+                if (entry.getCount() >= entry.getMaxStackSize()) continue;
+                ItemKey key = ItemKey.of(entry);
+                if (partial.putIfAbsent(key, index) != null) return new Move(bag, index, key, bag);
+            }
+        }
+        return null;
+    }
+
+    private static boolean canContainAll(BagView destination, BagView source) {
+        if (!MoBundleCompat.isSpecialized(destination.bagStack)) {
+            return Fraction.ONE.subtract(destination.weightUsed).compareTo(source.weightUsed) >= 0;
+        }
+        ItemStack projection = destination.bagStack.copy();
+        for (ItemStack entry : source.entries) {
+            if (MoBundleCompat.maxInsertable(projection, entry) < entry.getCount()) return false;
+            appendProjection(projection, entry, entry.getCount());
+        }
+        return true;
+    }
+
+    private static void appendProjection(ItemStack bag, ItemStack entry, int amount) {
+        List<ItemStackTemplate> items = new ArrayList<>(bag.getOrDefault(DataComponents.BUNDLE_CONTENTS, BundleContents.EMPTY).items());
+        int remaining = amount;
+        for (int index = 0; index < items.size() && remaining > 0; index++) {
+            ItemStackTemplate stored = items.get(index);
+            if (!ItemStack.isSameItemSameComponents(stored.create(), entry)) continue;
+            int moved = Math.min(remaining, entry.getMaxStackSize() - stored.count());
+            if (moved > 0) {
+                items.set(index, stored.withCount(stored.count() + moved));
+                remaining -= moved;
+            }
+        }
+        if (remaining > 0) items.add(ItemStackTemplate.fromNonEmptyStack(entry.copyWithCount(remaining)));
+        bag.set(DataComponents.BUNDLE_CONTENTS, new BundleContents(items));
     }
 
     private static Comparator<ItemKey> keyComparator(SortMode mode, Map<ItemKey, Long> totals) {

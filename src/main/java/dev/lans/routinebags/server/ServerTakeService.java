@@ -1,6 +1,7 @@
 package dev.lans.routinebags.server;
 
 import dev.lans.routinebags.RoutineBags;
+import dev.lans.routinebags.bag.MoBundleCompat;
 import dev.lans.routinebags.network.ItemIdentity;
 import dev.lans.routinebags.network.RoutineBagsNetwork;
 import dev.lans.routinebags.network.RoutineBagsNetwork.TakeRequestPayload;
@@ -185,7 +186,7 @@ public final class ServerTakeService {
         }
         ItemStack live = inventory.getItem(invIndex);
         BundleContents contents = live.get(DataComponents.BUNDLE_CONTENTS);
-        if (live.getCount() != 1 || contents == null) {
+        if (live.getCount() != 1 || contents == null || MoBundleCompat.isSpecialized(live)) {
             return null;
         }
         PlannedBag bag = new PlannedBag(invIndex, live.copy(), new ArrayList<>(contents.items()));

@@ -11,6 +11,7 @@ import dev.lans.routinebags.SortMode;
 import dev.lans.routinebags.bag.BagKind;
 import dev.lans.routinebags.bag.BagScanner;
 import dev.lans.routinebags.bag.BagView;
+import dev.lans.routinebags.bag.MoBundleCompat;
 import dev.lans.routinebags.interact.CursorOps;
 import dev.lans.routinebags.interact.InvOps;
 import dev.lans.routinebags.interact.StepRunner;
@@ -54,8 +55,9 @@ public final class UnifiedBagScreen extends Screen {
     private static final int GRID_W = GRID_COLS * CELL;
     private static final int SIDEBAR_W = 112;
     private static final int SIDEBAR_ROW_H = 20;
-    private static final int BTN_H = 14;
-    private static final int IMG_W = PAD + GRID_W + 6 + SIDEBAR_W + PAD;
+    private static final int BTN_H = 20;
+    private static final int CONTENT_GAP = 16;
+    private static final int IMG_W = PAD + GRID_W + CONTENT_GAP + SIDEBAR_W + PAD;
     private static final int GRID_TOP = 35;
     private static final int INVENTORY_GAP = 17;
     private static final int MIN_GRID_ROWS = 2;
@@ -129,13 +131,13 @@ public final class UnifiedBagScreen extends Screen {
         int gridX = this.left + PAD;
         int gridY = this.top + GRID_TOP;
         this.gridRect = new Rect(gridX, gridY, GRID_W, this.gridH);
-        this.sidebarRect = new Rect(gridX + GRID_W + 6, gridY, SIDEBAR_W, this.gridH);
+        this.sidebarRect = new Rect(gridX + GRID_W + CONTENT_GAP, gridY, SIDEBAR_W, this.gridH);
         this.sidebarVisibleRows = Math.max(1, (this.gridH - 12) / SIDEBAR_ROW_H);
 
         int invY = gridY + this.gridH + INVENTORY_GAP;
         this.invRect = new Rect(gridX, invY, GRID_W, 3 * CELL);
         this.hotbarRect = new Rect(gridX, invY + 3 * CELL + 4, GRID_W, CELL);
-        this.offhandRect = new Rect(gridX + GRID_W + 6, invY + 3 * CELL + 4, CELL, CELL);
+        this.offhandRect = new Rect(gridX + GRID_W + CONTENT_GAP, invY + 3 * CELL + 4, CELL, CELL);
         int controlsX = this.sidebarRect.x;
         this.sortBtn = new Rect(controlsX, invY, 54, BTN_H);
         this.cancelBtn = new Rect(controlsX + 58, invY, 54, BTN_H);
@@ -252,17 +254,14 @@ public final class UnifiedBagScreen extends Screen {
         drawButtons(g, mouseX, mouseY);
         drawPlayerInventory(g, mouseX, mouseY);
         drawStatus(g);
-        drawModeBadge(g, mouseX, mouseY);
         drawCarried(g, mouseX, mouseY);
     }
 
     private void drawHeader(GuiGraphicsExtractor g, int mouseX, int mouseY) {
         if (!this.query.isEmpty()) {
             boolean hover = this.searchClearBtn.contains(mouseX, mouseY);
-            VanillaUi.button(g, this.searchClearBtn.x, this.searchClearBtn.y, this.searchClearBtn.w,
-                    this.searchClearBtn.h, hover, true);
-            VanillaUi.centeredText(g, this.font, Component.literal("×"), this.searchClearBtn.x + 6,
-                    this.searchClearBtn.y + 2, VanillaUi.buttonText(hover, true));
+            VanillaUi.crossButton(g, this.searchClearBtn.x, this.searchClearBtn.y,
+                    this.searchClearBtn.w, hover);
             if (hover) {
                 g.setComponentTooltipForNextFrame(this.font, List.of(Component.translatable("gui.routinebags.clear_search")), mouseX, mouseY);
             }
@@ -338,9 +337,7 @@ public final class UnifiedBagScreen extends Screen {
             }
             lines.add(line);
         }
-        if (entry.anyMutable) {
-            lines.add(Component.translatable("gui.routinebags.hint_extract").withStyle(ChatFormatting.DARK_GRAY));
-        } else {
+        if (!entry.anyMutable) {
             lines.add(Component.translatable("gui.routinebags.readonly").withStyle(ChatFormatting.RED));
         }
         return lines;
@@ -361,13 +358,12 @@ public final class UnifiedBagScreen extends Screen {
             VanillaUi.listRow(g, x, y, rowW, SIDEBAR_ROW_H - 2, hover, selected);
             g.item(bag.bagStack, x + 1, y + 1);
             String label = "#" + (ordinal + 1);
-            VanillaUi.text(g, this.font, label, x + 20, y + 1,
-                    bag.mutable ? VanillaUi.TEXT : VanillaUi.DANGER);
+            VanillaUi.text(g, this.font, label, x + 20, y + 5,
+                    bag.mutable ? VanillaUi.TEXT_LIGHT : 0xFFFF8080);
             int barX = x + 20 + this.font.width(label) + 3;
             int barW = Math.max(8, rowW - (barX - x) - 4);
             float pct = bag.fillFraction();
-            VanillaUi.progressBar(g, barX, y + 3, barW, pct, capacityColor(pct));
-            VanillaUi.text(g, this.font, capacityText(bag), x + 20, y + 10, VanillaUi.TEXT_DIM);
+            VanillaUi.progressBar(g, barX, y + 6, barW, pct);
             if (hover) {
                 // 原版 bundle 预览组件白嫖：自带内容网格和选中高亮
                 g.setTooltipForNextFrame(this.font, bagTooltip(bag, ordinal),
@@ -379,52 +375,26 @@ public final class UnifiedBagScreen extends Screen {
             VanillaUi.scrollbar(g, bagScrollBar.trackX, bagScrollBar.trackY, bagScrollBar.trackH,
                     bagScrollBar.thumbY, bagScrollBar.thumbH);
         }
-        int usedUnits = 0;
-        int totalUnits = 0;
-        for (BagView bag : this.bags) {
-            if (bag.kind == BagKind.BUNDLE && bag.mutable) {
-                usedUnits += bag.usedUnits();
-                totalUnits += BagView.DISPLAY_UNITS;
-            }
-        }
-        if (!this.bags.isEmpty()) {
-            Component footer;
-            if (this.bags.size() > this.sidebarVisibleRows && totalUnits > 0) {
-                footer = Component.translatable("gui.routinebags.bag_footer",
-                        this.bagScroll + 1, Math.min(this.bagScroll + shown, this.bags.size()), this.bags.size(),
-                        usedUnits, totalUnits);
-            } else if (this.bags.size() > this.sidebarVisibleRows) {
-                footer = Component.translatable("gui.routinebags.bag_footer_page",
-                        this.bagScroll + 1, Math.min(this.bagScroll + shown, this.bags.size()), this.bags.size());
-            } else if (totalUnits > 0) {
-                footer = Component.translatable("gui.routinebags.bag_footer_capacity", usedUnits, totalUnits);
-            } else {
-                footer = Component.empty();
-            }
+        if (this.bags.size() > this.sidebarVisibleRows) {
+            Component footer = Component.translatable("gui.routinebags.bag_footer_page",
+                    this.bagScroll + 1, Math.min(this.bagScroll + shown, this.bags.size()), this.bags.size());
             VanillaUi.text(g, this.font, footer, this.sidebarRect.x + 2,
                     this.sidebarRect.y + this.gridH - 9, VanillaUi.TEXT_DIM);
         }
-    }
-
-    private String capacityText(BagView bag) {
-        if (bag.kind == BagKind.BUNDLE) {
-            return bag.usedUnits() + "/" + BagView.DISPLAY_UNITS;
-        }
-        return bag.slotCapacity > 0 ? bag.slotsUsed + "/" + bag.slotCapacity : String.valueOf(bag.slotsUsed);
     }
 
     private List<Component> bagTooltip(BagView bag, int ordinal) {
         List<Component> lines = new ArrayList<>();
         lines.add(Component.literal("#" + (ordinal + 1) + " ").append(bag.displayName()));
         if (bag.kind == BagKind.BUNDLE) {
-            lines.add(Component.translatable("gui.routinebags.capacity_units", bag.usedUnits(), BagView.DISPLAY_UNITS)
+            lines.add(Component.translatable(bag.usesItemCountCapacity() ? "gui.routinebags.capacity_items"
+                    : "gui.routinebags.capacity_units", bag.usedUnits(), bag.capacityUnits())
                     .withStyle(ChatFormatting.GRAY));
             int sel = BundleItem.getSelectedItemIndex(InvOps.stackAt(bag.menuSlot));
             if (sel >= 0 && sel < bag.entries.size()) {
                 lines.add(Component.translatable("gui.routinebags.selected_entry",
                         bag.entries.get(sel).getHoverName()).withStyle(ChatFormatting.AQUA));
             }
-            lines.add(Component.translatable("gui.routinebags.hint_bag_vanilla").withStyle(ChatFormatting.DARK_GRAY));
         } else if (bag.slotCapacity > 0) {
             lines.add(Component.translatable("gui.routinebags.capacity_slots", bag.slotsUsed, bag.slotCapacity)
                     .withStyle(ChatFormatting.GRAY));
@@ -435,15 +405,7 @@ public final class UnifiedBagScreen extends Screen {
         if (!bag.mutable) {
             lines.add(Component.translatable("gui.routinebags.readonly").withStyle(ChatFormatting.RED));
         }
-        lines.add(Component.translatable("gui.routinebags.hint_filter").withStyle(ChatFormatting.DARK_GRAY));
         return lines;
-    }
-
-    private static int capacityColor(float pct) {
-        if (pct >= 0.999F) {
-            return 0xFFCC5555;
-        }
-        return pct > 0.75F ? 0xFFCCAA44 : 0xFF55BB66;
     }
 
     private void drawButtons(GuiGraphicsExtractor g, int mouseX, int mouseY) {
@@ -453,7 +415,7 @@ public final class UnifiedBagScreen extends Screen {
                         && !ServerBridge.hasOperationInFlight());
         drawButton(g, this.cancelBtn, Component.translatable("gui.routinebags.cancel"), mouseX, mouseY,
                 this.sorter.isActive() || this.runner.busy() || this.waitingServerSort || this.pendingTakeRequest >= 0);
-        drawButton(g, this.modeBtn, Component.translatable(this.sortMode.translationKey()), mouseX, mouseY, true);
+        drawButton(g, this.modeBtn, compactModeLabel(), mouseX, mouseY, true);
         if (this.sortBtn.contains(mouseX, mouseY)) {
             g.setComponentTooltipForNextFrame(this.font, List.of(Component.translatable(canUseServerSort()
                     ? "gui.routinebags.tooltip.sort_server"
@@ -463,6 +425,15 @@ public final class UnifiedBagScreen extends Screen {
         } else if (this.modeBtn.contains(mouseX, mouseY)) {
             g.setComponentTooltipForNextFrame(this.font, List.of(Component.translatable("gui.routinebags.tooltip.mode")), mouseX, mouseY);
         }
+    }
+
+    private Component compactModeLabel() {
+        return switch (this.sortMode) {
+            case BY_CREATIVE -> Component.translatable("gui.routinebags.sort_mode.short.creative");
+            case BY_ID -> Component.translatable("gui.routinebags.sort_mode.short.id");
+            case BY_NAME -> Component.translatable("gui.routinebags.sort_mode.short.name");
+            case BY_COUNT -> Component.translatable("gui.routinebags.sort_mode.short.count");
+        };
     }
 
     private void drawButton(GuiGraphicsExtractor g, Rect r, Component label, int mouseX, int mouseY, boolean enabled) {
@@ -492,7 +463,6 @@ public final class UnifiedBagScreen extends Screen {
             if (BundleContents.canItemBeInBundle(hoveredStack)) {
                 lines.add(Component.translatable("gui.routinebags.weight_per_item", unitsPerItem(hoveredStack))
                         .withStyle(ChatFormatting.GRAY));
-                lines.add(Component.translatable("gui.routinebags.hint_store").withStyle(ChatFormatting.DARK_GRAY));
             } else {
                 lines.add(Component.translatable("gui.routinebags.cant_fit").withStyle(ChatFormatting.RED));
             }
@@ -524,39 +494,10 @@ public final class UnifiedBagScreen extends Screen {
     }
 
     private void drawStatus(GuiGraphicsExtractor g) {
-        int y = this.top + this.imgH - 12;
-        Component filterNote = null;
-        int filterWidth = 0;
-        if (this.bagFilter >= 0 && this.bagFilter < this.bags.size()) {
-            filterNote = Component.translatable("gui.routinebags.filter_bag", "#" + (this.bagFilter + 1));
-            filterWidth = this.font.width(filterNote);
-            VanillaUi.text(g, this.font, filterNote, this.left + IMG_W - PAD - filterWidth, y, VanillaUi.TEXT_DIM);
-        }
-        Component leftText = this.status != null ? this.status : summaryText();
-        int maxWidth = IMG_W - PAD * 2 - (filterNote == null ? 0 : filterWidth + 8);
-        VanillaUi.text(g, this.font, fitText(leftText, maxWidth), this.left + PAD, y,
-                this.status != null ? VanillaUi.STATUS : VanillaUi.TEXT_DIM);
-    }
-
-    private Component summaryText() {
-        int totalStacks = 0;
-        for (Entry entry : this.entries) {
-            totalStacks += entry.sources.size();
-        }
-        return Component.translatable("gui.routinebags.summary",
-                this.visible.size(), this.entries.size(), this.bags.size(), totalStacks);
-    }
-
-    private void drawModeBadge(GuiGraphicsExtractor g, int mouseX, int mouseY) {
-        Component label = ServerBridge.modeLabel();
-        int x = this.sidebarRect.x + 2;
-        int y = this.modeBtn.y + this.modeBtn.h + 5;
-        int w = Math.min(SIDEBAR_W - 2, this.font.width(label) + 8);
-        boolean hover = mouseX >= x && mouseX < x + w && mouseY >= y && mouseY < y + 11;
-        g.fill(x, y + 3, x + 3, y + 6, hover ? VanillaUi.STATUS : VanillaUi.TEXT_DIM);
-        VanillaUi.text(g, this.font, label, x + 7, y, hover ? VanillaUi.STATUS : VanillaUi.TEXT_DIM);
-        if (hover) {
-            g.setComponentTooltipForNextFrame(this.font, List.of(ServerBridge.providerTooltip()), mouseX, mouseY);
+        if (this.status != null) {
+            int y = this.top + this.imgH - 12;
+            VanillaUi.text(g, this.font, fitText(this.status, IMG_W - PAD * 2),
+                    this.left + PAD, y, VanillaUi.STATUS);
         }
     }
 
@@ -822,6 +763,9 @@ public final class UnifiedBagScreen extends Screen {
 
     /** 失败提示带上数字，方便判断是总容量不足，还是单件物品本身占满 64 单位。 */
     private Component bagsFullMessage(ItemStack stack) {
+        if (this.bags.stream().anyMatch(bag -> MoBundleCompat.isSpecialized(bag.bagStack))) {
+            return Component.translatable("gui.routinebags.status.bags_full_generic");
+        }
         int maxFree = 0;
         for (BagView bag : this.bags) {
             if (bag.kind == BagKind.BUNDLE && bag.mutable) {
@@ -898,7 +842,7 @@ public final class UnifiedBagScreen extends Screen {
         if (maxScroll <= 0) {
             return null;
         }
-        int trackX = this.gridRect.x + GRID_W + 1;
+        int trackX = this.gridRect.x + GRID_W + 2;
         int thumbH = VanillaUi.thumbHeight(this.gridH, this.gridRows, totalRows);
         int thumbY = VanillaUi.thumbY(this.gridRect.y, this.gridH, thumbH, this.scrollRow, maxScroll);
         return new ScrollMetrics(trackX, this.gridRect.y, this.gridH, thumbY, thumbH, maxScroll);

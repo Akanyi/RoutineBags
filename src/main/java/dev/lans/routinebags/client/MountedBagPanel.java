@@ -10,6 +10,7 @@ import dev.lans.routinebags.SortMode;
 import dev.lans.routinebags.bag.BagKind;
 import dev.lans.routinebags.bag.BagScanner;
 import dev.lans.routinebags.bag.BagView;
+import dev.lans.routinebags.bag.MoBundleCompat;
 import dev.lans.routinebags.interact.CursorOps;
 import dev.lans.routinebags.interact.InvOps;
 import dev.lans.routinebags.interact.StepRunner;
@@ -31,6 +32,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.util.Mth;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.item.component.BundleContents;
 import org.apache.commons.lang3.math.Fraction;
 import org.jspecify.annotations.Nullable;
@@ -44,11 +46,13 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
     private static final int CELL = 18;
     private static final int GRID_COLS = 6;
     private static final int GRID_W = GRID_COLS * CELL;
-    private static final int BTN_H = 14;
-    private static final int W = PAD + GRID_W + PAD;
+    private static final int BTN_H = 16;
+    private static final int OPEN_BTN_H = 14;
+    private static final int SCROLL_GUTTER = 14;
+    private static final int W = PAD + GRID_W + SCROLL_GUTTER + PAD;
     private static final int PANEL_GAP = 4;
-    private static final int TAB_W = 24;
-    private static final int TAB_H = 18;
+    private static final int TAB_W = 20;
+    private static final int TAB_H = 20;
     private static final int MIN_GRID_ROWS = 3;
     private static final int MAX_GRID_ROWS = 8;
     private static final int HEADER_H = 18;
@@ -83,6 +87,24 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
     private boolean draggingGridScroll;
     private boolean suppressed;
     private boolean layoutAvailable;
+    private boolean hidden = ClientConfig.MOUNTED_PANEL_HIDDEN.get();
+    private int panelX = ClientConfig.MOUNTED_PANEL_X.get();
+    private int panelY = ClientConfig.MOUNTED_PANEL_Y.get();
+    private int buttonX = ClientConfig.MOUNTED_BUTTON_X.get();
+    private int buttonY = ClientConfig.MOUNTED_BUTTON_Y.get();
+    private int screenW;
+    private int screenH;
+    private int containerLeft;
+    private int containerTop;
+    private int containerW;
+    private int containerH;
+    private boolean draggingPanel;
+    private boolean draggingButton;
+    private boolean dragMoved;
+    private double dragStartX;
+    private double dragStartY;
+    private int dragOriginX;
+    private int dragOriginY;
 
     private int x;
     private int y;
@@ -96,14 +118,22 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
     private Rect modeBtn = new Rect(0, 0, 0, 0);
     private Rect openBtn = new Rect(0, 0, 0, 0);
     private Rect closeBtn = new Rect(0, 0, 0, 0);
+    private Rect hideBtn = new Rect(0, 0, 0, 0);
+    private Rect headerRect = new Rect(0, 0, 0, 0);
 
     public MountedBagPanel(AbstractContainerMenu mountedMenu) {
         this.mountedMenu = mountedMenu;
     }
 
     public void layout(int screenW, int screenH, int containerLeft, int containerTop, int containerW, int containerH) {
+        this.screenW = screenW;
+        this.screenH = screenH;
+        this.containerLeft = containerLeft;
+        this.containerTop = containerTop;
+        this.containerW = containerW;
+        this.containerH = containerH;
         int gridTop = PAD + HEADER_H + SECTION_HEADER_H;
-        int fixedH = gridTop + 4 + BTN_H + 3 + 11 + 4 + 9 + PAD;
+        int fixedH = gridTop + 4 + BTN_H + 3 + OPEN_BTN_H + 4 + 9 + PAD;
         this.gridRows = Math.clamp((screenH - fixedH - 8) / CELL, MIN_GRID_ROWS, MAX_GRID_ROWS);
         this.gridH = this.gridRows * CELL;
         this.h = fixedH + this.gridH;
@@ -111,24 +141,38 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
         int rightX = containerLeft + containerW + PANEL_GAP;
         boolean fitsLeft = leftX >= 4;
         boolean fitsRight = rightX + W <= screenW - 4;
-        this.layoutAvailable = fitsLeft || fitsRight;
+        this.tabRect = new Rect(MountedPosition.resolve(this.buttonX, tabX(screenW, containerLeft), screenW, TAB_W),
+                MountedPosition.resolve(this.buttonY, containerTop + 8, screenH, TAB_H), TAB_W, TAB_H);
+        this.layoutAvailable = screenW >= W + 8 && screenH >= fixedH + MIN_GRID_ROWS * CELL + 8;
         if (!this.layoutAvailable) {
-            this.mouseCaptured = false;
             setFocused(false);
             return;
         }
-        this.x = fitsLeft ? leftX : rightX;
-        this.y = Mth.clamp(containerTop, 4, Math.max(4, screenH - this.h - 4));
-        this.tabRect = new Rect(tabX(screenW, containerLeft), Mth.clamp(this.y + 8, 4, Math.max(4, screenH - TAB_H - 4)), TAB_W, TAB_H);
-        this.closeBtn = new Rect(this.x + W - PAD - 12, this.y + 3, 12, 12);
+        int fallbackX = fitsLeft ? leftX : fitsRight ? rightX : 4;
+        this.x = MountedPosition.resolve(this.panelX, fallbackX, screenW, W);
+        this.y = MountedPosition.resolve(this.panelY, containerTop, screenH, this.h);
+        updateRects();
+    }
+
+    private void updateRects() {
+        this.headerRect = new Rect(this.x + 3, this.y + 3, W - 6, HEADER_H - 3);
+        this.closeBtn = new Rect(this.x + W - PAD - 26, this.y + 3, 12, 12);
+        this.hideBtn = new Rect(this.x + W - PAD - 12, this.y + 3, 12, 12);
         int innerX = this.x + PAD;
-        this.gridRect = new Rect(innerX, this.y + gridTop, GRID_W, this.gridH);
+        this.gridRect = new Rect(innerX, this.y + PAD + HEADER_H + SECTION_HEADER_H, GRID_W, this.gridH);
         int btnY = this.gridRect.y + this.gridH + 4;
         this.sortBtn = new Rect(innerX, btnY, 34, BTN_H);
         this.cancelBtn = new Rect(innerX + 38, btnY, 34, BTN_H);
         this.modeBtn = new Rect(innerX + 76, btnY, GRID_W - 76, BTN_H);
-        this.openBtn = new Rect(innerX, btnY + BTN_H + 3, GRID_W, 11);
-        refresh();
+        this.openBtn = new Rect(innerX, btnY + BTN_H + 3, GRID_W, OPEN_BTN_H);
+    }
+
+    private void relayout() {
+        layout(this.screenW, this.screenH, this.containerLeft, this.containerTop, this.containerW, this.containerH);
+    }
+
+    private void saveLayout() {
+        ClientConfig.saveMountedLayout(this.panelX, this.panelY, this.buttonX, this.buttonY, this.hidden);
     }
 
     private int tabX(int screenW, int containerLeft) {
@@ -194,6 +238,11 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
     }
 
     public void cleanup() {
+        if (this.dragMoved) saveLayout();
+        this.draggingPanel = false;
+        this.draggingButton = false;
+        this.dragMoved = false;
+        this.mouseCaptured = false;
         this.runner.clear();
         this.sorter.cancel();
         this.waitingServerSort = false;
@@ -235,19 +284,24 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float partialTick) {
-        if (this.suppressed || !this.layoutAvailable) {
+        if (this.suppressed || this.hidden) {
             return;
         }
-        if (!this.open) {
+        if (!this.open || !this.layoutAvailable) {
             drawTab(g, mouseX, mouseY);
         }
-        if (!this.open || this.h <= 0) {
+        if (!this.open || !this.layoutAvailable || this.h <= 0) {
             return;
         }
         VanillaUi.panel(g, this.x, this.y, W, this.h);
         VanillaUi.text(g, this.minecraft.font, Component.translatable("gui.routinebags.mount.title"),
                 this.x + PAD, this.y + 5, VanillaUi.TEXT);
         drawCloseButton(g, mouseX, mouseY);
+        if (this.headerRect.contains(mouseX, mouseY) && !this.closeBtn.contains(mouseX, mouseY)
+                && !this.hideBtn.contains(mouseX, mouseY)) {
+            g.setComponentTooltipForNextFrame(this.minecraft.font,
+                    List.of(Component.translatable("gui.routinebags.mount.tooltip_move_panel")), mouseX, mouseY);
+        }
 
         drawGrid(g, mouseX, mouseY);
         drawButtons(g, mouseX, mouseY);
@@ -258,17 +312,16 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
         boolean hover = this.tabRect.contains(mouseX, mouseY);
         VanillaUi.button(g, this.tabRect.x, this.tabRect.y, this.tabRect.w, this.tabRect.h,
                 hover || this.open, true);
-        Component label = this.open ? Component.literal("<") : Component.translatable("gui.routinebags.mount.tab");
-        VanillaUi.centeredText(g, this.minecraft.font, label, this.tabRect.x + this.tabRect.w / 2,
-                this.tabRect.y + 5, VanillaUi.buttonText(hover || this.open, true));
+        g.item(new ItemStack(Items.BUNDLE), this.tabRect.x + 2, this.tabRect.y + 2);
         if (!this.statusBadgeText().isEmpty()) {
             g.fill(this.tabRect.x + this.tabRect.w - 5, this.tabRect.y + 2,
                     this.tabRect.x + this.tabRect.w - 2, this.tabRect.y + 5, VanillaUi.STATUS);
         }
         if (hover) {
-            g.setComponentTooltipForNextFrame(this.minecraft.font, List.of(Component.translatable(this.open
-                    ? "gui.routinebags.mount.tooltip_collapse"
-                    : "gui.routinebags.mount.tooltip_expand")), mouseX, mouseY);
+            g.setComponentTooltipForNextFrame(this.minecraft.font, List.of(
+                    Component.translatable("gui.routinebags.mount.tooltip_expand"),
+                    Component.translatable("gui.routinebags.mount.tooltip_move_button"),
+                    Component.translatable("gui.routinebags.mount.tooltip_hide_button")), mouseX, mouseY);
         }
     }
 
@@ -279,10 +332,14 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
     private void drawCloseButton(GuiGraphicsExtractor g, int mouseX, int mouseY) {
         boolean hover = this.closeBtn.contains(mouseX, mouseY);
         VanillaUi.button(g, this.closeBtn.x, this.closeBtn.y, this.closeBtn.w, this.closeBtn.h, hover, true);
-        VanillaUi.centeredText(g, this.minecraft.font, Component.literal("×"), this.closeBtn.x + this.closeBtn.w / 2,
-                this.closeBtn.y + 2, VanillaUi.buttonText(hover, true));
+        g.fill(this.closeBtn.x + 3, this.closeBtn.y + 8, this.closeBtn.x + 9, this.closeBtn.y + 10,
+                VanillaUi.buttonText(hover, true));
+        boolean hideHover = this.hideBtn.contains(mouseX, mouseY);
+        VanillaUi.crossButton(g, this.hideBtn.x, this.hideBtn.y, this.hideBtn.w, hideHover);
         if (hover) {
             g.setComponentTooltipForNextFrame(this.minecraft.font, List.of(Component.translatable("gui.routinebags.mount.tooltip_collapse")), mouseX, mouseY);
+        } else if (hideHover) {
+            g.setComponentTooltipForNextFrame(this.minecraft.font, List.of(Component.translatable("gui.routinebags.mount.tooltip_hide")), mouseX, mouseY);
         }
     }
 
@@ -355,9 +412,7 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
             }
             lines.add(line);
         }
-        if (entry.anyMutable) {
-            lines.add(Component.translatable("gui.routinebags.mount.hint_extract").withStyle(ChatFormatting.DARK_GRAY));
-        } else {
+        if (!entry.anyMutable) {
             lines.add(Component.translatable("gui.routinebags.readonly").withStyle(ChatFormatting.RED));
         }
         return lines;
@@ -410,19 +465,18 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
     }
 
     private void drawStatus(GuiGraphicsExtractor g) {
+        if (this.status == null) {
+            return;
+        }
         int y = this.openBtn.y + this.openBtn.h + 4;
         Component text = this.status;
-        if (text == null) {
-            text = Component.translatable("gui.routinebags.mount.summary", this.visible.size(), this.bags.size());
-        }
         Component visibleText = text;
         if (this.minecraft.font.width(text) > GRID_W) {
             String suffix = "...";
             visibleText = Component.literal(this.minecraft.font.plainSubstrByWidth(text.getString(),
                     GRID_W - this.minecraft.font.width(suffix)) + suffix);
         }
-        VanillaUi.text(g, this.minecraft.font, visibleText, this.x + PAD, y,
-                this.status == null ? VanillaUi.TEXT_DIM : VanillaUi.STATUS);
+        VanillaUi.text(g, this.minecraft.font, visibleText, this.x + PAD, y, VanillaUi.STATUS);
     }
 
     private void drawSection(GuiGraphicsExtractor g, int x, int y, int w, int h, Component title) {
@@ -435,17 +489,22 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
 
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
-        if (this.suppressed || !this.layoutAvailable) {
+        if (this.suppressed || this.hidden) {
             return false;
         }
         double mx = event.x();
         double my = event.y();
-        if (!this.open && this.tabRect.contains(mx, my)) {
+        if ((!this.open || !this.layoutAvailable) && this.tabRect.contains(mx, my)) {
             this.mouseCaptured = true;
-            toggleOpen();
+            if (event.button() == GLFW.GLFW_MOUSE_BUTTON_RIGHT) {
+                hide();
+            } else if (event.button() == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+                if (event.hasShiftDown()) resetPosition();
+                else beginMove(mx, my, true);
+            }
             return true;
         }
-        if (!this.open) {
+        if (!this.open || !this.layoutAvailable) {
             return false;
         }
         if (!isMouseOver(mx, my)) {
@@ -454,11 +513,23 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
         this.mouseCaptured = true;
         this.focused = true;
         boolean rightClick = event.button() == GLFW.GLFW_MOUSE_BUTTON_RIGHT;
-        if (!rightClick && beginScrollDrag(mx, my)) {
+        if (this.hideBtn.contains(mx, my)) {
+            hide();
             return true;
         }
         if (this.closeBtn.contains(mx, my)) {
             toggleOpen();
+            return true;
+        }
+        if (this.headerRect.contains(mx, my)) {
+            if (event.button() == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+                if (event.hasShiftDown()) resetPosition();
+                else beginMove(mx, my, false);
+            }
+            return true;
+        }
+        if (event.button() != GLFW.GLFW_MOUSE_BUTTON_LEFT && !rightClick) return true;
+        if (!rightClick && beginScrollDrag(mx, my)) {
             return true;
         }
         if (this.openBtn.contains(mx, my)) {
@@ -508,13 +579,16 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
     }
 
     public boolean consumeMouseReleased(double mouseX, double mouseY, int button) {
-        if (this.suppressed) {
-            return false;
-        }
+        boolean captured = this.mouseCaptured;
         if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
             this.draggingGridScroll = false;
+            if (this.draggingButton && !this.dragMoved && !this.hidden && !this.suppressed) toggleOpen();
+            if (this.dragMoved) saveLayout();
+            this.draggingPanel = false;
+            this.draggingButton = false;
+            this.dragMoved = false;
         }
-        if (this.mouseCaptured || isMouseOver(mouseX, mouseY)) {
+        if (captured || isMouseOver(mouseX, mouseY)) {
             this.mouseCaptured = false;
             return true;
         }
@@ -522,8 +596,12 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
     }
 
     public boolean consumeMouseDragged(double mouseX, double mouseY, int button) {
+        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && (this.draggingPanel || this.draggingButton)) {
+            moveAt(mouseX, mouseY);
+            return true;
+        }
         if (this.suppressed) {
-            return false;
+            return this.mouseCaptured;
         }
         if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && this.draggingGridScroll) {
             ScrollMetrics metrics = gridScrollMetrics();
@@ -533,6 +611,49 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
             return true;
         }
         return this.mouseCaptured || isMouseOver(mouseX, mouseY);
+    }
+
+    private void beginMove(double mouseX, double mouseY, boolean button) {
+        this.draggingButton = button;
+        this.draggingPanel = !button;
+        this.dragMoved = false;
+        this.dragStartX = mouseX;
+        this.dragStartY = mouseY;
+        this.dragOriginX = button ? this.tabRect.x : this.x;
+        this.dragOriginY = button ? this.tabRect.y : this.y;
+    }
+
+    private void moveAt(double mouseX, double mouseY) {
+        double dx = mouseX - this.dragStartX;
+        double dy = mouseY - this.dragStartY;
+        if (!this.dragMoved && dx * dx + dy * dy < 9.0) return;
+        this.dragMoved = true;
+        int newX = this.dragOriginX + (int) Math.round(dx);
+        int newY = this.dragOriginY + (int) Math.round(dy);
+        if (this.draggingButton) {
+            this.buttonX = MountedPosition.encode(newX, this.screenW, TAB_W);
+            this.buttonY = MountedPosition.encode(newY, this.screenH, TAB_H);
+        } else {
+            this.panelX = MountedPosition.encode(newX, this.screenW, W);
+            this.panelY = MountedPosition.encode(newY, this.screenH, this.h);
+        }
+        relayout();
+    }
+
+    private void hide() {
+        this.hidden = true;
+        this.open = false;
+        openState = false;
+        setFocused(false);
+        saveLayout();
+    }
+
+    public void resetPosition() {
+        this.panelX = this.panelY = this.buttonX = this.buttonY = -1;
+        this.hidden = false;
+        this.draggingPanel = this.draggingButton = this.dragMoved = false;
+        saveLayout();
+        relayout();
     }
 
     private void startSort() {
@@ -639,6 +760,9 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
     }
 
     private Component bagsFullMessage(ItemStack stack) {
+        if (this.bags.stream().anyMatch(bag -> MoBundleCompat.isSpecialized(bag.bagStack))) {
+            return Component.translatable("gui.routinebags.status.bags_full_generic");
+        }
         int maxFree = 0;
         for (BagView bag : this.bags) {
             if (bag.kind == BagKind.BUNDLE && bag.mutable) {
@@ -693,7 +817,7 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
         if (maxScroll <= 0) {
             return null;
         }
-        int trackX = this.gridRect.x + GRID_W + 1;
+        int trackX = this.gridRect.x + GRID_W + 2;
         int thumbH = VanillaUi.thumbHeight(this.gridH, this.gridRows, totalRows);
         int thumbY = VanillaUi.thumbY(this.gridRect.y, this.gridH, thumbH, this.scrollRow, maxScroll);
         return new ScrollMetrics(trackX, this.gridRect.y, this.gridH, thumbY, thumbH, maxScroll);
@@ -704,9 +828,10 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
 
     @Override
     public boolean mouseScrolled(double x, double y, double scrollX, double scrollY) {
-        if (!this.layoutAvailable || !this.open) {
+        if (this.suppressed || this.hidden) {
             return false;
         }
+        if (!this.layoutAvailable || !this.open) return isMouseOver(x, y);
         ScrollMetrics metrics = gridScrollMetrics();
         if ((metrics != null && VanillaUi.overScrollbar(x, y, metrics.trackX, metrics.trackY, metrics.trackH))
                 || this.gridRect.contains(x, y)) {
@@ -715,19 +840,12 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
             refresh();
             return true;
         }
-        return false;
+        return isMouseOver(x, y);
     }
 
     @Override
     public boolean keyPressed(KeyEvent event) {
-        if (!this.layoutAvailable) {
-            return false;
-        }
-        if (Keybinds.OPEN_UNIFIED.get().matches(event)) {
-            toggleOpen();
-            return true;
-        }
-        return false;
+        return handleToggleKey(event.key(), event.scancode(), event.modifiers());
     }
 
     @Override
@@ -736,7 +854,18 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
     }
 
     public void toggleOpen() {
+        if (this.hidden) {
+            this.hidden = false;
+            this.open = this.layoutAvailable;
+            openState = this.open;
+            saveLayout();
+            refresh();
+            return;
+        }
         if (!this.layoutAvailable) {
+            if (!busyBlocked() && this.minecraft.screen != null) {
+                this.minecraft.setScreen(new UnifiedBagScreen(this.minecraft.screen));
+            }
             return;
         }
         this.open = !this.open;
@@ -750,6 +879,13 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
 
     public boolean matchesToggleKey(int keyCode, int scanCode, int modifiers) {
         return Keybinds.OPEN_UNIFIED.get().matches(new KeyEvent(keyCode, scanCode, modifiers));
+    }
+
+    public boolean handleToggleKey(int keyCode, int scanCode, int modifiers) {
+        if (this.suppressed || !matchesToggleKey(keyCode, scanCode, modifiers)) return false;
+        if ((modifiers & GLFW.GLFW_MOD_SHIFT) != 0) resetPosition();
+        else toggleOpen();
+        return true;
     }
 
     public boolean isOpen() {
@@ -766,7 +902,8 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
         }
         this.suppressed = suppressed;
         if (suppressed) {
-            this.mouseCaptured = false;
+            if (this.dragMoved) saveLayout();
+            this.draggingPanel = this.draggingButton = this.dragMoved = this.draggingGridScroll = false;
             setFocused(false);
         }
     }
@@ -778,13 +915,13 @@ public final class MountedBagPanel implements GuiEventListener, Renderable, Narr
 
     @Override
     public boolean isMouseOver(double mouseX, double mouseY) {
-        if (this.suppressed || !this.layoutAvailable) {
+        if (this.suppressed || this.hidden) {
             return false;
         }
-        if (!this.open && this.tabRect.contains(mouseX, mouseY)) {
+        if ((!this.open || !this.layoutAvailable) && this.tabRect.contains(mouseX, mouseY)) {
             return true;
         }
-        return this.open && mouseX >= this.x && mouseX < this.x + W && mouseY >= this.y && mouseY < this.y + this.h;
+        return this.open && this.layoutAvailable && mouseX >= this.x && mouseX < this.x + W && mouseY >= this.y && mouseY < this.y + this.h;
     }
 
     @Override

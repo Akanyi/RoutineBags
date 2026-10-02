@@ -1,0 +1,11 @@
+{
+  "required": false,
+  "package": "dev.lans.routinebags.mixin.client",
+  "compatibilityLevel": "JAVA_25",
+  "client": [
+    "MoBundleStorageScreenMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 0
+  }
+}

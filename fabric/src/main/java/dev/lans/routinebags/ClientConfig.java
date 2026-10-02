@@ -18,6 +18,11 @@ public final class ClientConfig {
     public static final Value<Boolean> SHOW_READ_ONLY = bool("showReadOnlyContainers", true);
     public static final Value<Boolean> MOUNT_IN_CONTAINER_SCREENS = bool("mountInContainerScreens", true);
     public static final Value<Boolean> MOUNTED_PANEL_OPEN_BY_DEFAULT = bool("mountedPanelOpenByDefault", false);
+    public static final Value<Boolean> MOUNTED_PANEL_HIDDEN = bool("mountedPanelHidden", false);
+    public static final Value<Integer> MOUNTED_PANEL_X = integer("mountedPanelX", -1, -1, 10000);
+    public static final Value<Integer> MOUNTED_PANEL_Y = integer("mountedPanelY", -1, -1, 10000);
+    public static final Value<Integer> MOUNTED_BUTTON_X = integer("mountedButtonX", -1, -1, 10000);
+    public static final Value<Integer> MOUNTED_BUTTON_Y = integer("mountedButtonY", -1, -1, 10000);
     public static final Value<SortMode> SORT_MODE = value("sortMode", SortMode.BY_ID,
             raw -> SortMode.valueOf(raw.toUpperCase(Locale.ROOT)));
 
@@ -51,6 +56,15 @@ public final class ClientConfig {
         } catch (IOException e) {
             RoutineBags.LOGGER.warn("Could not write Fabric client config {}", PATH, e);
         }
+    }
+
+    public static void saveMountedLayout(int panelX, int panelY, int buttonX, int buttonY, boolean hidden) {
+        MOUNTED_PANEL_X.set(panelX);
+        MOUNTED_PANEL_Y.set(panelY);
+        MOUNTED_BUTTON_X.set(buttonX);
+        MOUNTED_BUTTON_Y.set(buttonY);
+        MOUNTED_PANEL_HIDDEN.set(hidden);
+        save();
     }
 
     private static Value<Integer> integer(String key, int fallback, int min, int max) {
@@ -87,6 +101,11 @@ public final class ClientConfig {
 
         public T get() {
             return this.current;
+        }
+
+        private void set(T value) {
+            this.current = value;
+            VALUES.setProperty(this.key, String.valueOf(value));
         }
 
         private boolean load(Properties properties) {
